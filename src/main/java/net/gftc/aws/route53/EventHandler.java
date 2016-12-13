@@ -24,8 +24,11 @@ public class EventHandler {
 
 	public EventHandler(Context context, SNSRecord event) {
 		logger = context.getLogger();
+		String snsMessageText = event.getSNS().getMessage();
+		if (NotifyRecords.isDebug())
+			logger.log("Got SNS message: " + snsMessageText);
 		try {
-			message = s_mapper.readValue(event.getSNS().getMessage(), 
+			message = s_mapper.readValue(snsMessageText, 
 					AutoScalingNotification.class);
 		} catch (IOException e) {
 			throw new RuntimeException("Unexpected parsing error: " + e.getMessage(),e);
