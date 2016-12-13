@@ -44,7 +44,7 @@
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-surefire-plugin</artifactId>
-				<version>${mave.surefire.plugin.version}</version>
+				<version>${maven.surefire.plugin.version}</version>
 				<configuration>
 					<environmentVariables>
 						<HOSTED_ZONE_ID>TEST123ABC</HOSTED_ZONE_ID>
