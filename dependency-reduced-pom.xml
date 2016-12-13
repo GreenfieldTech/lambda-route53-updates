@@ -8,6 +8,16 @@
   <build>
     <plugins>
       <plugin>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>${maven.surefire.plugin.version}</version>
+        <configuration>
+          <environmentVariables>
+            <HOSTED_ZONE_ID>TEST123ABC</HOSTED_ZONE_ID>
+            <DISABLE_LIVE_TESTS>1</DISABLE_LIVE_TESTS>
+          </environmentVariables>
+        </configuration>
+      </plugin>
+      <plugin>
         <artifactId>maven-compiler-plugin</artifactId>
         <version>${maven.compiler.plugin.version}</version>
         <configuration>
@@ -21,9 +31,24 @@
       </plugin>
     </plugins>
   </build>
+  <dependencies>
+    <dependency>
+      <groupId>junit</groupId>
+      <artifactId>junit</artifactId>
+      <version>[4,)</version>
+      <scope>test</scope>
+      <exclusions>
+        <exclusion>
+          <artifactId>hamcrest-core</artifactId>
+          <groupId>org.hamcrest</groupId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+  </dependencies>
   <properties>
     <maven.compiler.plugin.version>3.5.1</maven.compiler.plugin.version>
     <java.version>1.8</java.version>
+    <maven.surefire.plugin.version>2.19.1</maven.surefire.plugin.version>
   </properties>
 </project>
 

@@ -13,8 +13,31 @@ import com.amazonaws.services.lambda.runtime.events.SNSEvent;
 import com.amazonaws.services.lambda.runtime.events.SNSEvent.SNSRecord;
 import com.amazonaws.services.sqs.model.UnsupportedOperationException;
 
+/**
+ * Main entry point from the AWS Lambda engine, that takes an SNS event
+ * @author odeda
+ *
+ *     Copyright (C) 2016  GreenfieldTech
+ * 
+ *     This library is free software; you can redistribute it and/or
+ *     modify it under the terms of the GNU Lesser General Public
+ *     License as published by the Free Software Foundation; either
+ *     version 2.1 of the License, or (at your option) any later version.
+ * 
+ *     This library is distributed in the hope that it will be useful,
+ *     but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *     Lesser General Public License for more details.
+ * 
+ *     You should have received a copy of the GNU Lesser General Public
+ *     License along with this library; if not, write to the Free Software
+ *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ */
 public class NotifyRecords implements RequestHandler<SNSEvent, String>{
-	
+
+	/**
+	 * Main entry point
+	 */
 	public String handleRequest(SNSEvent input, Context context) {
 		if (Objects.isNull(input)) {
 			context.getLogger().log("Invalid SNS input object");
@@ -31,16 +54,35 @@ public class NotifyRecords implements RequestHandler<SNSEvent, String>{
 		return "OK";
 	}
 	
+	/* ==- Helper Utilities -== */
+	
+	/**
+	 * Check if we need to enable debug mode
+	 * @return true if debug mode was requested by setting the DEBUG environment variable
+	 */
 	public static boolean isDebug() {
 		String debug = System.getenv("DEBUG");
 		return Objects.nonNull(debug) && !debug.isEmpty();
 	}
 	
+	/**
+	 * Check if SRV record update was requested by specifying the SRV_RECORD environemtn variable
+	 * This setting is mandatory if DNSRR_RECORD is not set
+	 * @return true if SRV record update is requested
+	 */
 	public static boolean useSRV() {
 		String var = System.getenv("SRV_RECORD");
 		return Objects.nonNull(var) && !var.isEmpty();
 	}
 	
+	/**
+	 * Format and retrieve the SRV record and FQDN that need to be updated
+	 * This setting is mandatory if DNSRR_RECORD is not set
+	 * @param hostname FQDN for which to generate an SRV record using the schema
+	 * 	specified by the SRV_RECORD environment variable
+	 * @return A pair where the key is the FQDN to update and the value is the
+	 * 	record set to update (add or remove a record)
+	 */
 	public static SimpleEntry<String,String> getSRV(String hostname) {
 		String var = System.getenv("SRV_RECORD");
 		if (Objects.isNull(var) || var.isEmpty())
@@ -56,11 +98,22 @@ public class NotifyRecords implements RequestHandler<SNSEvent, String>{
 					.collect(Collectors.joining(" ")));
 	}
 	
+	/**
+	 * Check if a DNS round-robin record update was requested by specifing the 
+	 * 	DNSRR_RECORD environment variable
+	 * This setting is mandatory if SRV_RECORD is not set
+	 * @return true if DNS round-robin record update is requested
+	 */
 	public static boolean useDNSRR() {
 		String var = System.getenv("DNSRR_RECORD");
 		return Objects.nonNull(var) && !var.isEmpty();
 	}
 	
+	/**
+	 * Return the FQDN for a DNS round-robin record that needs to be updated
+	 * This setting is mandatory if SRV_RECORD is not set
+	 * @return the FQDN of the DNS round robin record set to update (add or remove a record)
+	 */
 	public static String getDNSRR() {
 		String var = System.getenv("DNSRR_RECORD");
 		if (Objects.isNull(var) || var.isEmpty())
@@ -69,6 +122,11 @@ public class NotifyRecords implements RequestHandler<SNSEvent, String>{
 		return var;
 	}
 
+	/**
+	 * Get the Route53 hosted zone ID to update, as specified in the HOSTED_ZONE_ID environment variable.
+	 * This setting is mandatory.
+	 * @return the Route53 hosted zone ID to update
+	 */
 	public static String getHostedZoneId() {
 		String var = System.getenv("HOSTED_ZONE_ID");
 		if (Objects.isNull(var) || var.isEmpty())
