@@ -32,7 +32,8 @@ public class TestRoute53 {
 		ChangeResourceRecordSetsRequest cr = Tools.getAndRemoveRecord(
 				"test." + testDomain, 
 				RRType.A, "1.2.3.4");
-		Tools.waitFor(r53.changeResourceRecordSets(cr));
+		if (!disableLiveTests)
+			Tools.waitFor(r53.changeResourceRecordSets(cr));
 		assertTrue(true);
 	}
 
