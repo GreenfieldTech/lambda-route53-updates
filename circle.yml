@@ -1,0 +1,9 @@
+machine:
+  java:
+    version: openjdk8
+dependencies:
+  override:
+    - mvn -B package shade:shade
+test:
+  post:
+    - install -D -m644 target/lambda-route53-updates-*.jar $CIRCLE_ARTIFACTS
