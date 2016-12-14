@@ -27,6 +27,10 @@ Create an AWS Lambda and upload the generated JAR, for example - using the AWS C
 role with the correct permissions for accessing the SNS topic you created. [See here for a tutorial on how to create
 AWS Lambda to work with SNS][1].
 
+ * Set the Lambda handler to: `net.gftc.aws.route53.NotifyRecords`
+ * Set the timeout to 60 seconds - because the lambda waits for the Route53 DNS servers to update before exiting,
+   which can take a long while.
+
 The following additional configuration must be done for the AWS Lambda function created:
 
 ### Permissions
@@ -44,7 +48,8 @@ the following permissions:
 
 ### Environment Variables
 
-The java implementation includes no hard coded configuration values and all configuration is done using AWS Lambda's support for "Environment Variables".
+The java implementation includes no hard coded configuration values and all configuration is done using AWS Lambda's support
+for "Environment Variables".
 
 The lambda function reads the following environment variables:
 
