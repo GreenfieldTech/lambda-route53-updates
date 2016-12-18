@@ -1,11 +1,12 @@
 package net.gftc.aws.route53;
 
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.Objects;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import com.amazonaws.services.route53.AmazonRoute53Client;
 import com.amazonaws.services.route53.model.Change;
 import com.amazonaws.services.route53.model.ChangeAction;
 import com.amazonaws.services.route53.model.ChangeBatch;
@@ -17,6 +18,8 @@ import com.amazonaws.services.route53.model.ListResourceRecordSetsRequest;
 import com.amazonaws.services.route53.model.RRType;
 import com.amazonaws.services.route53.model.ResourceRecord;
 import com.amazonaws.services.route53.model.ResourceRecordSet;
+
+import static net.gftc.aws.Clients.route53;
 
 /**
  * Route53 integration utilities
@@ -40,7 +43,6 @@ import com.amazonaws.services.route53.model.ResourceRecordSet;
  */
 public class Tools {
 	private static final long WAIT_PULSE = 250;
-	static private AmazonRoute53Client r53 = new AmazonRoute53Client(net.gftc.aws.Tools.getCreds());
 
 	/**
 	 * Wait until the specified change request has been applied on Route53 servers
@@ -54,7 +56,7 @@ public class Tools {
 					ci.wait(WAIT_PULSE);
 				} catch (InterruptedException e) { }
 			}
-			ci = r53.getChange(new GetChangeRequest(ci.getId())).getChangeInfo();
+			ci = route53().getChange(new GetChangeRequest(ci.getId())).getChangeInfo();
 		}
 	}
 
@@ -76,7 +78,7 @@ public class Tools {
 				.withStartRecordName(hostname)
 				.withStartRecordType(type)
 				.withMaxItems("1");
-		return r53.listResourceRecordSets(req).getResourceRecordSets().stream()
+		return route53().listResourceRecordSets(req).getResourceRecordSets().stream()
 				.filter(rr -> rr.getName().equals(domainname))
 				.findAny().orElse(new ResourceRecordSet(domainname, type)
 						.withTTL(300L));
@@ -110,6 +112,8 @@ public class Tools {
 	public static ChangeResourceRecordSetsRequest getAndAddRecord(String hostname, RRType rtype, String value) {
 		ResourceRecordSet rr = Tools.getRecordSet(hostname, rtype);
 		rr.getResourceRecords().add(new ResourceRecord(value));
+		HashSet<ResourceRecord> uniqRRs = new HashSet<>(rr.getResourceRecords());
+		rr.setResourceRecords(uniqRRs);
 		return rrsetToChange(rr);
 	}
 

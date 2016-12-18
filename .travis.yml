@@ -1,0 +1,12 @@
+language: java
+jdk:
+- oraclejdk8
+deploy:
+  provider: releases
+  api_key:
+    secure: p1mc1rAYdZOFpGHLRGTcRjlAw8WuR9Fz3vd15Z+miCahb4oQD/1UVC56ilohx63adhAKde06rQAMyEj+/dfgy1Rp6S+ApAhOR2DYd1185FKxRYl0MKaU9tMtGbU+a2gB26HW1yBUHc6OSZqI8JCAYLD1TZgebedDRO3vAKFuGr2FbRaM/aBiEJ69vhBNY/sPFNoRxY+jyFXbCB1fEjl6JXsUQx6L0xbaZewzHfLHYCrAnfVeICpViAUIO2bPbCdtCssk6Bt8yarhPlBKrAvJX1/IuPU/gnf7ZO56PpkH6q8P6gQ16o6PcyWzlPx6oLNuITQEZhLY47zcHOLX4v6Xd/p7dDX6RhMwzaQynrHCmPhvkaO6aNZ5eXTStWNjs95Mg3viirEKMG6rAPsIVzOqBhteSI++Vm3hvIcH3PqYkPGMAmQQK3G+nrob1mgrxNMvb8XqBYgXq/LhI0Wb0W0RG4/8J0L9sLj1tkXgGQOzj9/xHHfb5wNAbv9+kAVBTMmceFBzz7aGK8Hi5Blkz039myhvCx4ZGZe49XZnD0QhWlBGL0Ru+wkPUmj913jjn4k3HaRUz4MFXgOUkiqbAKAXwhKmbMOZiIWxJjpOTiotgRBF2KDu/FwYrmu2IUwDxg37M2xqH2m/YyuXwCIFC2aK4hmpUMwPNQdxRutClhRHS+4=
+  file: target/lambda-route53-updates-*.jar
+  on:
+    repo: GreenfieldTech/lambda-route53-updates
+    branch: develop
+    tags: true

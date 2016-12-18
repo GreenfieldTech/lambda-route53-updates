@@ -3,16 +3,22 @@ package net.gftc.aws.route53;
 import java.io.IOException;
 import java.util.AbstractMap.SimpleEntry;
 
-import com.amazonaws.services.ec2.AmazonEC2Client;
 import com.amazonaws.services.ec2.model.DescribeInstancesRequest;
 import com.amazonaws.services.ec2.model.Instance;
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.LambdaLogger;
 import com.amazonaws.services.lambda.runtime.events.SNSEvent.SNSRecord;
-import com.amazonaws.services.route53.AmazonRoute53Client;
 import com.amazonaws.services.route53.model.ChangeResourceRecordSetsRequest;
 import com.amazonaws.services.route53.model.RRType;
+import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
+import net.gftc.aws.route53.eventhandler.AutoScaling;
+import net.gftc.aws.route53.eventhandler.LifeCycle;
+
+import static net.gftc.aws.Clients.*;
+import static net.gftc.aws.route53.NotifyRecords.*;
 
 /**
  * Handler for a single SNS event that was submitted to the lambda implementation
@@ -36,41 +42,55 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  */
 public class EventHandler {
 
-	private LambdaLogger logger;
-	private AutoScalingNotification message;
 	static private ObjectMapper s_mapper = new ObjectMapper();
-	static private AmazonRoute53Client r53 = new AmazonRoute53Client(net.gftc.aws.Tools.getCreds());
-	static private AmazonEC2Client ec2 = new AmazonEC2Client(net.gftc.aws.Tools.getCreds());
+	
+	private LambdaLogger logger;
+	private EventType eventType;
+	private String ec2instanceId;
+	
+	static {
+		s_mapper.configure(MapperFeature.ACCEPT_CASE_INSENSITIVE_PROPERTIES, true);
+	}
 
 	/**
 	 * Constructor to parse the SNS message and perform additional initialization
 	 * @param context Call context from engine
 	 * @param event SNS event to process
 	 */
-	public EventHandler(Context context, SNSRecord event) {
-		logger = context.getLogger();
+	public static EventHandler create(Context context, SNSRecord event) {
 		String snsMessageText = event.getSNS().getMessage();
-		if (NotifyRecords.isDebug())
-			logger.log("Got SNS message: " + snsMessageText);
+		if (isDebug())
+			context.getLogger().log("Got SNS message: " + snsMessageText + "\n");
 		try {
-			message = s_mapper.readValue(snsMessageText, 
-					AutoScalingNotification.class);
+			ObjectNode obj = s_mapper.readValue(snsMessageText, ObjectNode.class);
+			if (obj.has("LifecycleHookName"))
+				return new LifeCycle(context, 
+						s_mapper.readValue(snsMessageText, LifeCycleNotification.class));
+			else
+				return new AutoScaling(context, 
+						s_mapper.readValue(snsMessageText, AutoScalingNotification.class));
 		} catch (IOException e) {
 			throw new RuntimeException("Unexpected parsing error: " + e.getMessage(),e);
 		} 
+	}
+	
+	protected EventHandler(Context context, EventType eventType, String ec2InstanceId) {
+		this.logger = context.getLogger();
+		this.eventType = eventType;
+		this.ec2instanceId = ec2InstanceId;
 	}
 
 	/**
 	 * Event handler entry point
 	 */
 	public void handle() {
-		switch (message.getType()) {
+		switch (eventType) {
 		case EC2_INSTANCE_LAUNCH:
-			registerInstance(message.getEC2InstanceId());
+			registerInstance(ec2instanceId);
 			break;
 		case EC2_INSTANCE_TERMINATE:
 		case EC2_INSTANCE_TERMINATE_ERROR:
-			deregisterIsntance(message.getEC2InstanceId());
+			deregisterIsntance(ec2instanceId);
 			break;
 		default: // do nothing in case of launch error
 		}
@@ -81,9 +101,12 @@ public class EventHandler {
 	 * @param ec2InstanceId instance ID of instance that needs to be registered
 	 */
 	private void registerInstance(String ec2InstanceId) {
-		logger.log("Registering " + ec2InstanceId);
+		log("Registering " + ec2InstanceId);
 		Instance i = getInstance(ec2InstanceId);
-		Tools.waitFor(r53.changeResourceRecordSets(createAddChangeRequest(i)));
+		ChangeResourceRecordSetsRequest req = createAddChangeRequest(i);
+		if (isDebug())
+			log("Sending rr change requset: " + req);
+		Tools.waitFor(route53().changeResourceRecordSets(req));
 	}
 	
 	/**
@@ -91,9 +114,12 @@ public class EventHandler {
 	 * @param ec2InstanceId instance ID of instance that needs to be de-registered
 	 */
 	private void deregisterIsntance(String ec2InstanceId) {
-		logger.log("Deregistering " + ec2InstanceId);
+		log("Deregistering " + ec2InstanceId);
 		Instance i = getInstance(ec2InstanceId);
-		Tools.waitFor(r53.changeResourceRecordSets(createRemoveChangeRequest(i)));
+		ChangeResourceRecordSetsRequest req = createRemoveChangeRequest(i);
+		if (isDebug())
+			log("Sending rr change request: " + req);
+		Tools.waitFor(route53().changeResourceRecordSets(req));
 	}
 
 	/**
@@ -102,11 +128,11 @@ public class EventHandler {
 	 * @return record removal request for Route53
 	 */
 	private ChangeResourceRecordSetsRequest createRemoveChangeRequest(Instance i) {
-		if (NotifyRecords.useDNSRR())
-			return Tools.getAndRemoveRecord(NotifyRecords.getDNSRR(), RRType.A, i.getPublicDnsName());
+		if (useDNSRR())
+			return Tools.getAndRemoveRecord(getDNSRR(), RRType.A, i.getPublicDnsName());
 		
-		if (NotifyRecords.useSRV()) {
-			SimpleEntry<String, String> record = NotifyRecords.getSRV(i.getPublicDnsName());
+		if (useSRV()) {
+			SimpleEntry<String, String> record = getSRV(i.getPublicDnsName());
 			return Tools.getAndRemoveRecord(record.getKey(), RRType.SRV, record.getValue());
 		}
 		
@@ -120,11 +146,11 @@ public class EventHandler {
 	 * @return record addition request for Route53
 	 */
 	private ChangeResourceRecordSetsRequest createAddChangeRequest(Instance i) {
-		if (NotifyRecords.useDNSRR())
-			return Tools.getAndAddRecord(NotifyRecords.getDNSRR(), RRType.A, i.getPublicIpAddress());
+		if (useDNSRR())
+			return Tools.getAndAddRecord(getDNSRR(), RRType.A, i.getPublicIpAddress());
 		
-		if (NotifyRecords.useSRV()) {
-			SimpleEntry<String, String> record = NotifyRecords.getSRV(i.getPublicDnsName());
+		if (useSRV()) {
+			SimpleEntry<String, String> record = getSRV(i.getPublicDnsName());
 			return Tools.getAndAddRecord(record.getKey(), RRType.SRV, record.getValue());
 		}
 		
@@ -139,13 +165,17 @@ public class EventHandler {
 	 * @throws RuntimeException in case no instance with the specified ID was found
 	 */
 	private Instance getInstance(String ec2InstanceId) {
-		return ec2.describeInstances(
+		return ec2().describeInstances(
 				new DescribeInstancesRequest().withInstanceIds(ec2InstanceId))
 				.getReservations().stream()
 				.flatMap(r -> r.getInstances().stream())
 				.findFirst()
 				.orElseThrow(() -> new RuntimeException(
 						"Failed to locate instance " + ec2InstanceId));
+	}
+
+	protected void log(String message) {
+		logger.log(message + "\n");
 	}
 
 }

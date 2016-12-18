@@ -27,24 +27,32 @@ Create an AWS Lambda and upload the generated JAR, for example - using the AWS C
 role with the correct permissions for accessing the SNS topic you created. [See here for a tutorial on how to create
 AWS Lambda to work with SNS][1].
 
+ * Set the Lambda handler to: `net.gftc.aws.route53.NotifyRecords`
+ * Set the timeout to 60 seconds - because the lambda waits for the Route53 DNS servers to update before exiting,
+   which can take a long while.
+
 The following additional configuration must be done for the AWS Lambda function created:
 
 ### Permissions
 
-Make sure the role you create for the AWS Lambda has permissions to update your Route53 DNS hosted zone. Specifically we'll need
+Make sure the role you create for the AWS Lambda has permissions to update your Route53 DNS hosted zone as well as other APIs. Specifically we'll need
 the following permissions:
 
+ * `route53:ListResourceRecordSets`
  * `route53:ChangeResourceRecordSets`
  * `route53:GetChange`
- * `route53:GetGeoLocation`
- * `route53:ListGeoLocations`
- * `route53:ListResourceRecordSets`
+ * `ec2:describeInstances`
+ * `autoscaling:CompleteLifecycleAction` (if using life-cycle notifications)
+ * `logs:CreateLogGroup` (to allow the lambda to create its own log group. Not needed if you are not interested in logs or will created the correct group yourself)
+ * `logs:CreateLogStream` (to allow the lambda to create its own log group. Not needed if you are not interested in logs)
+ * `logs:PutLogEvents` (to allow the lambda to create its own log group. Not needed if you are not interested in logs)
 
 [1]: http://docs.aws.amazon.com/lambda/latest/dg/with-sns-example.html
 
 ### Environment Variables
 
-The java implementation includes no hard coded configuration values and all configuration is done using AWS Lambda's support for "Environment Variables".
+The java implementation includes no hard coded configuration values and all configuration is done using AWS Lambda's support
+for "Environment Variables".
 
 The lambda function reads the following environment variables:
 
