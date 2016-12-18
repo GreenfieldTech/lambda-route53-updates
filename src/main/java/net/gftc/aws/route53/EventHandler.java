@@ -103,7 +103,10 @@ public class EventHandler {
 	private void registerInstance(String ec2InstanceId) {
 		logger.log("Registering " + ec2InstanceId + "\n");
 		Instance i = getInstance(ec2InstanceId);
-		Tools.waitFor(route53().changeResourceRecordSets(createAddChangeRequest(i)));
+		ChangeResourceRecordSetsRequest req = createAddChangeRequest(i);
+		if (isDebug())
+			logger.log("Sending rr change requset: " + req + "\n");
+		Tools.waitFor(route53().changeResourceRecordSets(req));
 	}
 	
 	/**
@@ -113,7 +116,10 @@ public class EventHandler {
 	private void deregisterIsntance(String ec2InstanceId) {
 		logger.log("Deregistering " + ec2InstanceId + "\n");
 		Instance i = getInstance(ec2InstanceId);
-		Tools.waitFor(route53().changeResourceRecordSets(createRemoveChangeRequest(i)));
+		ChangeResourceRecordSetsRequest req = createRemoveChangeRequest(i);
+		if (isDebug())
+			logger.log("Sending rr change request: " + req + "\n");
+		Tools.waitFor(route53().changeResourceRecordSets(req));
 	}
 
 	/**
