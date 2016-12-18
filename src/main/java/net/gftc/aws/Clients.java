@@ -2,6 +2,8 @@ package net.gftc.aws;
 
 import java.util.Objects;
 
+import com.amazonaws.regions.Region;
+import com.amazonaws.regions.Regions;
 import com.amazonaws.services.autoscaling.AmazonAutoScaling;
 import com.amazonaws.services.autoscaling.AmazonAutoScalingClient;
 import com.amazonaws.services.ec2.AmazonEC2Client;
@@ -37,11 +39,21 @@ public class Clients {
 	static private AmazonRoute53Client r53;
 	static private AmazonEC2Client ec2;
 	private static AmazonAutoScaling autoscaling;
+	
+	private static Region region = Regions.getCurrentRegion();
+	
+	static {
+		if (Objects.isNull(region)) {
+			System.err.println("No default region find, hard coding ap-southeast-1");
+			region = Region.getRegion(Regions.AP_SOUTHEAST_1);
+		}
+	}
 
 	synchronized public static AmazonRoute53Client route53() {
 		if (Objects.isNull(r53)) {
 			System.err.println("Initializing Route53 client using " + getCreds());
 			r53 = new AmazonRoute53Client(getCreds());
+			r53.setRegion(region);
 		}
 		return r53;
 	}
@@ -50,6 +62,7 @@ public class Clients {
 		if (Objects.isNull(ec2)) {
 			System.err.println("Initializing EC2 client using " + getCreds());
 			ec2 = new AmazonEC2Client(getCreds());
+			ec2.setRegion(region);
 		}
 		return ec2;
 	}
@@ -58,6 +71,7 @@ public class Clients {
 		if (Objects.isNull(autoscaling)) {
 			System.err.println("Initializing AutoScaling client using " + getCreds());
 			autoscaling = new AmazonAutoScalingClient(getCreds());
+			autoscaling.setRegion(region);
 		}
 		return autoscaling;
 	}
