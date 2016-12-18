@@ -10,7 +10,6 @@ import static net.gftc.aws.route53.NotifyRecords.useSRV;
 
 import java.io.IOException;
 import java.util.AbstractMap.SimpleEntry;
-import java.util.LinkedList;
 import java.util.Objects;
 
 import com.amazonaws.services.ec2.model.DescribeInstancesRequest;
@@ -18,8 +17,6 @@ import com.amazonaws.services.ec2.model.Instance;
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.LambdaLogger;
 import com.amazonaws.services.lambda.runtime.events.SNSEvent.SNSRecord;
-import com.amazonaws.services.route53.model.Change;
-import com.amazonaws.services.route53.model.ChangeBatch;
 import com.amazonaws.services.route53.model.ChangeResourceRecordSetsRequest;
 import com.amazonaws.services.route53.model.RRType;
 import com.fasterxml.jackson.databind.MapperFeature;
@@ -93,15 +90,19 @@ public class EventHandler {
 	 * Event handler entry point
 	 */
 	public void handle() {
-		switch (eventType) {
-		case EC2_INSTANCE_LAUNCH:
-			registerInstance(ec2instanceId);
-			break;
-		case EC2_INSTANCE_TERMINATE:
-		case EC2_INSTANCE_TERMINATE_ERROR:
-			deregisterIsntance(ec2instanceId);
-			break;
-		default: // do nothing in case of launch error
+		try {
+			switch (eventType) {
+			case EC2_INSTANCE_LAUNCH:
+				registerInstance(ec2instanceId);
+				break;
+			case EC2_INSTANCE_TERMINATE:
+			case EC2_INSTANCE_TERMINATE_ERROR:
+				deregisterIsntance(ec2instanceId);
+				break;
+			default: // do nothing in case of launch error
+			}
+		} catch (SilentFailure e) {
+			log("Silently failing Route53 update: " + e.getMessage());
 		}
 	}
 
@@ -137,12 +138,8 @@ public class EventHandler {
 	 * @return record removal request for Route53
 	 */
 	private ChangeResourceRecordSetsRequest createRemoveChangeRequest(Instance i) {
-		if (Objects.isNull(i.getPublicIpAddress())) {
-			log("Corwardly refusing to remove an instance with no IP address");
-			return new ChangeResourceRecordSetsRequest(
-					NotifyRecords.getHostedZoneId(),
-					new ChangeBatch(new LinkedList<Change>()));
-		}
+		if (Objects.isNull(i.getPublicIpAddress()))
+			throw new SilentFailure("Corwardly refusing to remove an instance with no IP address");
 		
 		if (isDebug())
 			log("Removing instance with addresses: " + i.getPublicIpAddress() + ", " + i.getPublicDnsName());
@@ -165,12 +162,8 @@ public class EventHandler {
 	 * @return record addition request for Route53
 	 */
 	private ChangeResourceRecordSetsRequest createAddChangeRequest(Instance i) {
-		if (Objects.isNull(i.getPublicIpAddress())) {
-			log("Corwardly refusing to add an instance with no IP address");
-			return new ChangeResourceRecordSetsRequest(
-					NotifyRecords.getHostedZoneId(),
-					new ChangeBatch(new LinkedList<Change>()));
-		}
+		if (Objects.isNull(i.getPublicIpAddress()))
+			throw new SilentFailure("Corwardly refusing to add an instance with no IP address");
 		
 		if (isDebug())
 			log("Adding instance with addresses: " + i.getPublicIpAddress() + ", " + i.getPublicDnsName());
