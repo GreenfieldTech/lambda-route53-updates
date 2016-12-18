@@ -45,10 +45,9 @@ public class Clients {
 	static {
 		if (Objects.isNull(region)) {
 			String defaultRegion = System.getenv("AWS_DEFAULT_REGION");
-			if (Objects.isNull(defaultRegion)) {
-				System.err.println("No default region find, hard coding ap-southeast-1");
-				region = Region.getRegion(Regions.AP_SOUTHEAST_1);
-			} else
+			if (Objects.isNull(defaultRegion))
+				throw new RuntimeException("No default region find, hard coding ap-southeast-1");
+			else
 				region = Region.getRegion(Regions.fromName(defaultRegion));
 		}
 	}
