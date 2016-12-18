@@ -38,11 +38,9 @@ The following additional configuration must be done for the AWS Lambda function 
 Make sure the role you create for the AWS Lambda has permissions to update your Route53 DNS hosted zone as well as other APIs. Specifically we'll need
 the following permissions:
 
+ * `route53:ListResourceRecordSets`
  * `route53:ChangeResourceRecordSets`
  * `route53:GetChange`
- * `route53:GetGeoLocation`
- * `route53:ListGeoLocations`
- * `route53:ListResourceRecordSets`
  * `ec2:describeInstances`
  * `autoscaling:CompleteLifecycleAction` (if using life-cycle notifications)
  * `logs:CreateLogGroup` (to allow the lambda to create its own log group. Not needed if you are not interested in logs or will created the correct group yourself)
