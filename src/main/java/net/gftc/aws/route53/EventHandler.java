@@ -18,6 +18,7 @@ import net.gftc.aws.route53.eventhandler.AutoScaling;
 import net.gftc.aws.route53.eventhandler.LifeCycle;
 
 import static net.gftc.aws.Clients.*;
+import static net.gftc.aws.route53.NotifyRecords.*;
 
 /**
  * Handler for a single SNS event that was submitted to the lambda implementation
@@ -58,7 +59,7 @@ public class EventHandler {
 	 */
 	public static EventHandler create(Context context, SNSRecord event) {
 		String snsMessageText = event.getSNS().getMessage();
-		if (NotifyRecords.isDebug())
+		if (isDebug())
 			context.getLogger().log("Got SNS message: " + snsMessageText + "\n");
 		try {
 			ObjectNode obj = s_mapper.readValue(snsMessageText, ObjectNode.class);
@@ -121,11 +122,11 @@ public class EventHandler {
 	 * @return record removal request for Route53
 	 */
 	private ChangeResourceRecordSetsRequest createRemoveChangeRequest(Instance i) {
-		if (NotifyRecords.useDNSRR())
-			return Tools.getAndRemoveRecord(NotifyRecords.getDNSRR(), RRType.A, i.getPublicDnsName());
+		if (useDNSRR())
+			return Tools.getAndRemoveRecord(getDNSRR(), RRType.A, i.getPublicDnsName());
 		
-		if (NotifyRecords.useSRV()) {
-			SimpleEntry<String, String> record = NotifyRecords.getSRV(i.getPublicDnsName());
+		if (useSRV()) {
+			SimpleEntry<String, String> record = getSRV(i.getPublicDnsName());
 			return Tools.getAndRemoveRecord(record.getKey(), RRType.SRV, record.getValue());
 		}
 		
@@ -139,11 +140,11 @@ public class EventHandler {
 	 * @return record addition request for Route53
 	 */
 	private ChangeResourceRecordSetsRequest createAddChangeRequest(Instance i) {
-		if (NotifyRecords.useDNSRR())
-			return Tools.getAndAddRecord(NotifyRecords.getDNSRR(), RRType.A, i.getPublicIpAddress());
+		if (useDNSRR())
+			return Tools.getAndAddRecord(getDNSRR(), RRType.A, i.getPublicIpAddress());
 		
-		if (NotifyRecords.useSRV()) {
-			SimpleEntry<String, String> record = NotifyRecords.getSRV(i.getPublicDnsName());
+		if (useSRV()) {
+			SimpleEntry<String, String> record = getSRV(i.getPublicDnsName());
 			return Tools.getAndAddRecord(record.getKey(), RRType.SRV, record.getValue());
 		}
 		
