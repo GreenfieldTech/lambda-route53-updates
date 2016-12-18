@@ -49,7 +49,7 @@ public class NotifyRecords implements RequestHandler<SNSEvent, String>{
 			return "Error: no SNS events";
 		}
 		records.parallelStream()
-			.map(e -> new EventHandler(context, e))
+			.map(e -> EventHandler.create(context, e))
 			.forEach(EventHandler::handle);
 		return "OK";
 	}

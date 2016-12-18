@@ -11,6 +11,10 @@ import com.amazonaws.services.lambda.runtime.events.SNSEvent.SNSRecord;
 import com.amazonaws.services.route53.model.ChangeResourceRecordSetsRequest;
 import com.amazonaws.services.route53.model.RRType;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
+import net.gftc.aws.route53.eventhandler.AutoScaling;
+import net.gftc.aws.route53.eventhandler.LifeCycle;
 
 import static net.gftc.aws.Clients.*;
 
@@ -36,39 +40,51 @@ import static net.gftc.aws.Clients.*;
  */
 public class EventHandler {
 
-	private LambdaLogger logger;
-	private AutoScalingNotification message;
 	static private ObjectMapper s_mapper = new ObjectMapper();
+	
+	private LambdaLogger logger;
+	private EventType eventType;
+	private String ec2instanceId;
 
 	/**
 	 * Constructor to parse the SNS message and perform additional initialization
 	 * @param context Call context from engine
 	 * @param event SNS event to process
 	 */
-	public EventHandler(Context context, SNSRecord event) {
-		logger = context.getLogger();
+	public static EventHandler create(Context context, SNSRecord event) {
 		String snsMessageText = event.getSNS().getMessage();
 		if (NotifyRecords.isDebug())
-			logger.log("Got SNS message: " + snsMessageText);
+			context.getLogger().log("Got SNS message: " + snsMessageText + "\n");
 		try {
-			message = s_mapper.readValue(snsMessageText, 
-					AutoScalingNotification.class);
+			ObjectNode obj = s_mapper.readValue(snsMessageText, ObjectNode.class);
+			if (obj.has("LifecycleHookName"))
+				return new LifeCycle(context, 
+						s_mapper.readValue(snsMessageText, LifeCycleNotification.class));
+			else
+				return new AutoScaling(context, 
+						s_mapper.readValue(snsMessageText, AutoScalingNotification.class));
 		} catch (IOException e) {
 			throw new RuntimeException("Unexpected parsing error: " + e.getMessage(),e);
 		} 
+	}
+	
+	protected EventHandler(Context context, EventType eventType, String ec2InstanceId) {
+		this.logger = context.getLogger();
+		this.eventType = eventType;
+		this.ec2instanceId = ec2InstanceId;
 	}
 
 	/**
 	 * Event handler entry point
 	 */
 	public void handle() {
-		switch (message.getType()) {
+		switch (eventType) {
 		case EC2_INSTANCE_LAUNCH:
-			registerInstance(message.getEC2InstanceId());
+			registerInstance(ec2instanceId);
 			break;
 		case EC2_INSTANCE_TERMINATE:
 		case EC2_INSTANCE_TERMINATE_ERROR:
-			deregisterIsntance(message.getEC2InstanceId());
+			deregisterIsntance(ec2instanceId);
 			break;
 		default: // do nothing in case of launch error
 		}
