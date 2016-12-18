@@ -44,9 +44,10 @@ the following permissions:
  * `route53:ListGeoLocations`
  * `route53:ListResourceRecordSets`
  * `ec2:describeInstances`
- * `logs:CreateLogGroup`
- * `logs:CreateLogStream`
- * `logs:PutLogEvents`
+ * `autoscaling:CompleteLifecycleAction` (if using life-cycle notifications)
+ * `logs:CreateLogGroup` (to allow the lambda to create its own log group. Not needed if you are not interested in logs or will created the correct group yourself)
+ * `logs:CreateLogStream` (to allow the lambda to create its own log group. Not needed if you are not interested in logs)
+ * `logs:PutLogEvents` (to allow the lambda to create its own log group. Not needed if you are not interested in logs)
 
 [1]: http://docs.aws.amazon.com/lambda/latest/dg/with-sns-example.html
 
