@@ -128,6 +128,8 @@ public class EventHandler {
 	 * @return record removal request for Route53
 	 */
 	private ChangeResourceRecordSetsRequest createRemoveChangeRequest(Instance i) {
+		if (isDebug())
+			log("Removing instance with addresses: " + i.getPublicIpAddress() + ", " + i.getPublicDnsName());
 		if (useDNSRR())
 			return Tools.getAndRemoveRecord(getDNSRR(), RRType.A, i.getPublicDnsName());
 		
@@ -146,6 +148,8 @@ public class EventHandler {
 	 * @return record addition request for Route53
 	 */
 	private ChangeResourceRecordSetsRequest createAddChangeRequest(Instance i) {
+		if (isDebug())
+			log("Adding instance with addresses: " + i.getPublicIpAddress() + ", " + i.getPublicDnsName());
 		if (useDNSRR())
 			return Tools.getAndAddRecord(getDNSRR(), RRType.A, i.getPublicIpAddress());
 		
