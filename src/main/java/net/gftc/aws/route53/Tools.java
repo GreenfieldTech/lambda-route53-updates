@@ -1,5 +1,7 @@
 package net.gftc.aws.route53;
 
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.Objects;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -110,6 +112,8 @@ public class Tools {
 	public static ChangeResourceRecordSetsRequest getAndAddRecord(String hostname, RRType rtype, String value) {
 		ResourceRecordSet rr = Tools.getRecordSet(hostname, rtype);
 		rr.getResourceRecords().add(new ResourceRecord(value));
+		HashSet<ResourceRecord> uniqRRs = new HashSet<>(rr.getResourceRecords());
+		rr.setResourceRecords(uniqRRs);
 		return rrsetToChange(rr);
 	}
 
