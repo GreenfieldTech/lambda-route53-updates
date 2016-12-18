@@ -1,5 +1,6 @@
 package net.gftc.aws.route53;
 
+import com.amazonaws.services.kinesisfirehose.model.InvalidArgumentException;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
 /**
@@ -32,6 +33,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
  *     "EC2InstanceId": "i-0e27e0409ced0da85",
  *     "LifecycleActionToken": "77777777-22cc-4444-abcd-1234567890ab"
  * }
+ * 
  * @author odeda
  *
  *     Copyright (C) 2016  GreenfieldTech
@@ -83,7 +85,11 @@ public class LifeCycleNotification {
 	
 	@JsonIgnore
 	public EventType getType() {
-		return lifecycleTransition;
+		switch (lifecycleTransition) {
+		case EC2_INSTANCE_LAUNCHING: return EventType.EC2_INSTANCE_LAUNCH;
+		case EC2_INSTANCE_TERMINATING: return EventType.EC2_INSTANCE_TERMINATE;
+		default: throw new InvalidArgumentException("Unsupported lifecycle event type: " + lifecycleTransition);
+		}
 	}
 	
 	public String getLifecycleTransition() {
