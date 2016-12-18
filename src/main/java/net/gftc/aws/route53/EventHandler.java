@@ -101,11 +101,11 @@ public class EventHandler {
 	 * @param ec2InstanceId instance ID of instance that needs to be registered
 	 */
 	private void registerInstance(String ec2InstanceId) {
-		logger.log("Registering " + ec2InstanceId + "\n");
+		log("Registering " + ec2InstanceId);
 		Instance i = getInstance(ec2InstanceId);
 		ChangeResourceRecordSetsRequest req = createAddChangeRequest(i);
 		if (isDebug())
-			logger.log("Sending rr change requset: " + req + "\n");
+			log("Sending rr change requset: " + req);
 		Tools.waitFor(route53().changeResourceRecordSets(req));
 	}
 	
@@ -114,11 +114,11 @@ public class EventHandler {
 	 * @param ec2InstanceId instance ID of instance that needs to be de-registered
 	 */
 	private void deregisterIsntance(String ec2InstanceId) {
-		logger.log("Deregistering " + ec2InstanceId + "\n");
+		log("Deregistering " + ec2InstanceId);
 		Instance i = getInstance(ec2InstanceId);
 		ChangeResourceRecordSetsRequest req = createRemoveChangeRequest(i);
 		if (isDebug())
-			logger.log("Sending rr change request: " + req + "\n");
+			log("Sending rr change request: " + req);
 		Tools.waitFor(route53().changeResourceRecordSets(req));
 	}
 
@@ -172,6 +172,10 @@ public class EventHandler {
 				.findFirst()
 				.orElseThrow(() -> new RuntimeException(
 						"Failed to locate instance " + ec2InstanceId));
+	}
+
+	protected void log(String message) {
+		logger.log(message + "\n");
 	}
 
 }
