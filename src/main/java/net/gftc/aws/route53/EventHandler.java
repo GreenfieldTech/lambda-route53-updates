@@ -3,16 +3,16 @@ package net.gftc.aws.route53;
 import java.io.IOException;
 import java.util.AbstractMap.SimpleEntry;
 
-import com.amazonaws.services.ec2.AmazonEC2Client;
 import com.amazonaws.services.ec2.model.DescribeInstancesRequest;
 import com.amazonaws.services.ec2.model.Instance;
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.LambdaLogger;
 import com.amazonaws.services.lambda.runtime.events.SNSEvent.SNSRecord;
-import com.amazonaws.services.route53.AmazonRoute53Client;
 import com.amazonaws.services.route53.model.ChangeResourceRecordSetsRequest;
 import com.amazonaws.services.route53.model.RRType;
 import com.fasterxml.jackson.databind.ObjectMapper;
+
+import static net.gftc.aws.Clients.*;
 
 /**
  * Handler for a single SNS event that was submitted to the lambda implementation
@@ -39,8 +39,6 @@ public class EventHandler {
 	private LambdaLogger logger;
 	private AutoScalingNotification message;
 	static private ObjectMapper s_mapper = new ObjectMapper();
-	static private AmazonRoute53Client r53 = new AmazonRoute53Client(net.gftc.aws.Tools.getCreds());
-	static private AmazonEC2Client ec2 = new AmazonEC2Client(net.gftc.aws.Tools.getCreds());
 
 	/**
 	 * Constructor to parse the SNS message and perform additional initialization
@@ -83,7 +81,7 @@ public class EventHandler {
 	private void registerInstance(String ec2InstanceId) {
 		logger.log("Registering " + ec2InstanceId);
 		Instance i = getInstance(ec2InstanceId);
-		Tools.waitFor(r53.changeResourceRecordSets(createAddChangeRequest(i)));
+		Tools.waitFor(route53().changeResourceRecordSets(createAddChangeRequest(i)));
 	}
 	
 	/**
@@ -93,7 +91,7 @@ public class EventHandler {
 	private void deregisterIsntance(String ec2InstanceId) {
 		logger.log("Deregistering " + ec2InstanceId);
 		Instance i = getInstance(ec2InstanceId);
-		Tools.waitFor(r53.changeResourceRecordSets(createRemoveChangeRequest(i)));
+		Tools.waitFor(route53().changeResourceRecordSets(createRemoveChangeRequest(i)));
 	}
 
 	/**
@@ -139,7 +137,7 @@ public class EventHandler {
 	 * @throws RuntimeException in case no instance with the specified ID was found
 	 */
 	private Instance getInstance(String ec2InstanceId) {
-		return ec2.describeInstances(
+		return ec2().describeInstances(
 				new DescribeInstancesRequest().withInstanceIds(ec2InstanceId))
 				.getReservations().stream()
 				.flatMap(r -> r.getInstances().stream())
