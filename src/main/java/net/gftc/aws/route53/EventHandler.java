@@ -1,13 +1,25 @@
 package net.gftc.aws.route53;
 
+import static net.gftc.aws.Clients.ec2;
+import static net.gftc.aws.Clients.route53;
+import static net.gftc.aws.route53.NotifyRecords.getDNSRR;
+import static net.gftc.aws.route53.NotifyRecords.getSRV;
+import static net.gftc.aws.route53.NotifyRecords.isDebug;
+import static net.gftc.aws.route53.NotifyRecords.useDNSRR;
+import static net.gftc.aws.route53.NotifyRecords.useSRV;
+
 import java.io.IOException;
 import java.util.AbstractMap.SimpleEntry;
+import java.util.LinkedList;
+import java.util.Objects;
 
 import com.amazonaws.services.ec2.model.DescribeInstancesRequest;
 import com.amazonaws.services.ec2.model.Instance;
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.LambdaLogger;
 import com.amazonaws.services.lambda.runtime.events.SNSEvent.SNSRecord;
+import com.amazonaws.services.route53.model.Change;
+import com.amazonaws.services.route53.model.ChangeBatch;
 import com.amazonaws.services.route53.model.ChangeResourceRecordSetsRequest;
 import com.amazonaws.services.route53.model.RRType;
 import com.fasterxml.jackson.databind.MapperFeature;
@@ -16,9 +28,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import net.gftc.aws.route53.eventhandler.AutoScaling;
 import net.gftc.aws.route53.eventhandler.LifeCycle;
-
-import static net.gftc.aws.Clients.*;
-import static net.gftc.aws.route53.NotifyRecords.*;
 
 /**
  * Handler for a single SNS event that was submitted to the lambda implementation
@@ -128,8 +137,16 @@ public class EventHandler {
 	 * @return record removal request for Route53
 	 */
 	private ChangeResourceRecordSetsRequest createRemoveChangeRequest(Instance i) {
+		if (Objects.isNull(i.getPublicIpAddress())) {
+			log("Corwardly refusing to remove an instance with no IP address");
+			return new ChangeResourceRecordSetsRequest(
+					NotifyRecords.getHostedZoneId(),
+					new ChangeBatch(new LinkedList<Change>()));
+		}
+		
 		if (isDebug())
 			log("Removing instance with addresses: " + i.getPublicIpAddress() + ", " + i.getPublicDnsName());
+
 		if (useDNSRR())
 			return Tools.getAndRemoveRecord(getDNSRR(), RRType.A, i.getPublicDnsName());
 		
@@ -148,8 +165,16 @@ public class EventHandler {
 	 * @return record addition request for Route53
 	 */
 	private ChangeResourceRecordSetsRequest createAddChangeRequest(Instance i) {
+		if (Objects.isNull(i.getPublicIpAddress())) {
+			log("Corwardly refusing to add an instance with no IP address");
+			return new ChangeResourceRecordSetsRequest(
+					NotifyRecords.getHostedZoneId(),
+					new ChangeBatch(new LinkedList<Change>()));
+		}
+		
 		if (isDebug())
 			log("Adding instance with addresses: " + i.getPublicIpAddress() + ", " + i.getPublicDnsName());
+		
 		if (useDNSRR())
 			return Tools.getAndAddRecord(getDNSRR(), RRType.A, i.getPublicIpAddress());
 		
