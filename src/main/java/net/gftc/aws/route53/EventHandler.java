@@ -100,7 +100,7 @@ public class EventHandler {
 	 * @param ec2InstanceId instance ID of instance that needs to be registered
 	 */
 	private void registerInstance(String ec2InstanceId) {
-		logger.log("Registering " + ec2InstanceId);
+		logger.log("Registering " + ec2InstanceId + "\n");
 		Instance i = getInstance(ec2InstanceId);
 		Tools.waitFor(route53().changeResourceRecordSets(createAddChangeRequest(i)));
 	}
@@ -110,7 +110,7 @@ public class EventHandler {
 	 * @param ec2InstanceId instance ID of instance that needs to be de-registered
 	 */
 	private void deregisterIsntance(String ec2InstanceId) {
-		logger.log("Deregistering " + ec2InstanceId);
+		logger.log("Deregistering " + ec2InstanceId + "\n");
 		Instance i = getInstance(ec2InstanceId);
 		Tools.waitFor(route53().changeResourceRecordSets(createRemoveChangeRequest(i)));
 	}
