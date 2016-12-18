@@ -22,6 +22,7 @@ public class LifeCycle extends EventHandler {
 		super.handle();
 		// after handling the event, we need to invoke the life cycle action handler
 		// to complete the life cycle
+		log("Completing life-cycle action with token " + event.getLifecycleActionToken());
 		autoscaling().completeLifecycleAction(new CompleteLifecycleActionRequest()
 				.withAutoScalingGroupName(event.getAutoScalingGroupName())
 				.withLifecycleHookName(event.getLifecycleHookName())
