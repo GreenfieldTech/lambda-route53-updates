@@ -1,6 +1,7 @@
 language: java
 jdk:
 - oraclejdk8
+script: mvn -B package shade:shade
 deploy:
   provider: releases
   api_key:
