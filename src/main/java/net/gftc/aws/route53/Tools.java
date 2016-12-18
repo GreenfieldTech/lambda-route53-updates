@@ -1,6 +1,5 @@
 package net.gftc.aws.route53;
 
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.Objects;
 import java.util.function.Predicate;
@@ -142,8 +141,16 @@ public class Tools {
 	private static ChangeResourceRecordSetsRequest rrsetToChange(ResourceRecordSet rrset) {
 		return new ChangeResourceRecordSetsRequest(
 				NotifyRecords.getHostedZoneId(),
-				new ChangeBatch(Stream.of(new Change(ChangeAction.UPSERT, rrset))
-						.collect(Collectors.toList())));
+				new ChangeBatch(Stream.of(
+						new Change(
+								rrset.getResourceRecords().isEmpty() ? 
+										// if the record set is empty, we should delete the record
+										ChangeAction.DELETE :
+										// otherwise we upsert
+										ChangeAction.UPSERT,
+								rrset)
+							).collect(Collectors.toList()))
+					);
 	}
 
 
