@@ -77,13 +77,6 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
  */
 public class AutoScalingNotification {
 	
-	public static enum EventType {
-		EC2_INSTANCE_LAUNCH,
-		EC2_INSTANCE_LAUNCH_ERROR,
-		EC2_INSTANCE_TERMINATE,
-		EC2_INSTANCE_TERMINATE_ERROR
-	}
-
 	private String progress;
 	private String accountId;
 	private String description;

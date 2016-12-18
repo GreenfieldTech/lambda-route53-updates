@@ -1,0 +1,8 @@
+package net.gftc.aws.route53;
+
+public enum EventType {
+	EC2_INSTANCE_LAUNCH,
+	EC2_INSTANCE_LAUNCH_ERROR,
+	EC2_INSTANCE_TERMINATE,
+	EC2_INSTANCE_TERMINATE_ERROR
+}
