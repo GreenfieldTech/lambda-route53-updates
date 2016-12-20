@@ -2,11 +2,7 @@ package net.gftc.aws.route53;
 
 import static net.gftc.aws.Clients.ec2;
 import static net.gftc.aws.Clients.route53;
-import static net.gftc.aws.route53.NotifyRecords.getDNSRR;
-import static net.gftc.aws.route53.NotifyRecords.getSRV;
-import static net.gftc.aws.route53.NotifyRecords.isDebug;
-import static net.gftc.aws.route53.NotifyRecords.useDNSRR;
-import static net.gftc.aws.route53.NotifyRecords.useSRV;
+import static net.gftc.aws.route53.NotifyRecords.*;
 
 import java.io.IOException;
 import java.util.AbstractMap.SimpleEntry;
@@ -17,6 +13,7 @@ import com.amazonaws.services.ec2.model.Instance;
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.LambdaLogger;
 import com.amazonaws.services.lambda.runtime.events.SNSEvent.SNSRecord;
+import com.amazonaws.services.route53.model.ChangeBatch;
 import com.amazonaws.services.route53.model.ChangeResourceRecordSetsRequest;
 import com.amazonaws.services.route53.model.RRType;
 import com.fasterxml.jackson.databind.MapperFeature;
@@ -144,16 +141,26 @@ public class EventHandler {
 		if (isDebug())
 			log("Removing instance with addresses: " + i.getPublicIpAddress() + ", " + i.getPublicDnsName());
 
+		ChangeResourceRecordSetsRequest req = null;
 		if (useDNSRR())
-			return Tools.getAndRemoveRecord(getDNSRR(), RRType.A, i.getPublicDnsName());
+			req = Tools.getAndRemoveRecord(getDNSRR(), RRType.A, i.getPublicDnsName());
 		
 		if (useSRV()) {
 			SimpleEntry<String, String> record = getSRV(i.getPublicDnsName());
-			return Tools.getAndRemoveRecord(record.getKey(), RRType.SRV, record.getValue());
+			ChangeResourceRecordSetsRequest srvReq = Tools.getAndRemoveRecord(record.getKey(), RRType.SRV, record.getValue());
+			if (Objects.isNull(req))
+				req = srvReq;
+			else {
+				// already have a DNS RR change batch in queue, just add our changes
+				ChangeBatch b = req.getChangeBatch();
+				srvReq.getChangeBatch().getChanges().forEach(b::withChanges);
+			}
 		}
 		
-		throw new UnsupportedOperationException(
-				"Please specify either DNSRR_RECORD or SRV_RECORD");
+		if (Objects.isNull(req))
+			throw new UnsupportedOperationException(
+					"Please specify either DNSRR_RECORD or SRV_RECORD");
+		return req;
 	}
 
 	/**
@@ -168,16 +175,26 @@ public class EventHandler {
 		if (isDebug())
 			log("Adding instance with addresses: " + i.getPublicIpAddress() + ", " + i.getPublicDnsName());
 		
+		ChangeResourceRecordSetsRequest req = null;
 		if (useDNSRR())
-			return Tools.getAndAddRecord(getDNSRR(), RRType.A, i.getPublicIpAddress());
+			req = Tools.getAndAddRecord(getDNSRR(), RRType.A, i.getPublicIpAddress());
 		
 		if (useSRV()) {
 			SimpleEntry<String, String> record = getSRV(i.getPublicDnsName());
-			return Tools.getAndAddRecord(record.getKey(), RRType.SRV, record.getValue());
+			ChangeResourceRecordSetsRequest srvReq = Tools.getAndAddRecord(record.getKey(), RRType.SRV, record.getValue());
+			if (Objects.isNull(req))
+				req = srvReq;
+			else {
+				// already have a DNS RR change batch in queue, just add our changes
+				ChangeBatch b = req.getChangeBatch();
+				srvReq.getChangeBatch().getChanges().forEach(b::withChanges);
+			}
 		}
 		
-		throw new UnsupportedOperationException(
+		if (Objects.isNull(req))
+			throw new UnsupportedOperationException(
 					"Please specify either DNSRR_RECORD or SRV_RECORD");
+		return req;
 	}
 	
 	/**
