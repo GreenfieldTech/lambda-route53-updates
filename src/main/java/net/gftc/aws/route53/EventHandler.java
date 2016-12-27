@@ -74,7 +74,7 @@ public class EventHandler {
 						s_mapper.readValue(snsMessageText, AutoScalingNotification.class));
 		} catch (IOException e) {
 			throw new RuntimeException("Unexpected parsing error: " + e.getMessage(),e);
-		} 
+		}
 	}
 	
 	protected EventHandler(Context context, EventType eventType, String ec2InstanceId) {
@@ -143,7 +143,7 @@ public class EventHandler {
 
 		ChangeResourceRecordSetsRequest req = null;
 		if (useDNSRR())
-			req = Tools.getAndRemoveRecord(getDNSRR(), RRType.A, i.getPublicDnsName());
+			req = Tools.getAndRemoveRecord(getDNSRR(), RRType.A, i.getPublicIpAddress());
 		
 		if (useSRV()) {
 			SimpleEntry<String, String> record = getSRV(i.getPublicDnsName());
