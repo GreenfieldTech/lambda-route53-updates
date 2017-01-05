@@ -96,7 +96,7 @@ public class EventHandler {
 			case EC2_INSTANCE_TERMINATE_ERROR:
 				deregisterIsntance(ec2instanceId);
 				break;
-			default: // do nothing in case of launch error
+			default: // do nothing in case of launch error or test notifcation
 			}
 		} catch (SilentFailure e) {
 			log("Silently failing Route53 update: " + e.getMessage());
