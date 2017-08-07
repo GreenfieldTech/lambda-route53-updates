@@ -1,6 +1,7 @@
 package net.gftc.aws.route53;
 
 import static org.junit.Assert.*;
+import static tech.greenfield.aws.Clients.route53;
 
 import java.util.Objects;
 
@@ -9,7 +10,7 @@ import org.junit.Test;
 import com.amazonaws.services.route53.model.ChangeResourceRecordSetsRequest;
 import com.amazonaws.services.route53.model.RRType;
 
-import static net.gftc.aws.Clients.route53;
+import tech.greenfield.aws.route53.Tools;
 
 /**
  * Test tool for Route53 work

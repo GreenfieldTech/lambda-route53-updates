@@ -1,8 +1,8 @@
-package net.gftc.aws.route53;
+package tech.greenfield.aws.route53;
 
-import static net.gftc.aws.Clients.ec2;
-import static net.gftc.aws.Clients.route53;
-import static net.gftc.aws.route53.NotifyRecords.*;
+import static tech.greenfield.aws.Clients.ec2;
+import static tech.greenfield.aws.Clients.route53;
+import static tech.greenfield.aws.route53.NotifyRecords.*;
 
 import java.io.IOException;
 import java.util.AbstractMap.SimpleEntry;
@@ -20,8 +20,8 @@ import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
-import net.gftc.aws.route53.eventhandler.AutoScaling;
-import net.gftc.aws.route53.eventhandler.LifeCycle;
+import tech.greenfield.aws.route53.eventhandler.AutoScaling;
+import tech.greenfield.aws.route53.eventhandler.LifeCycle;
 
 /**
  * Handler for a single SNS event that was submitted to the lambda implementation

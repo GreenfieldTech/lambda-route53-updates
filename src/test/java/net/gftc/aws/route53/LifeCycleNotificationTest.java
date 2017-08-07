@@ -10,6 +10,8 @@ import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import tech.greenfield.aws.route53.LifeCycleNotification;
+
 public class LifeCycleNotificationTest {
 
 	static private ObjectMapper s_mapper = new ObjectMapper();

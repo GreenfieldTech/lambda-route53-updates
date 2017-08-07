@@ -1,4 +1,6 @@
-package net.gftc.aws.route53;
+package tech.greenfield.aws.route53;
+
+import static tech.greenfield.aws.Clients.route53;
 
 import java.util.HashSet;
 import java.util.Objects;
@@ -17,8 +19,6 @@ import com.amazonaws.services.route53.model.ListResourceRecordSetsRequest;
 import com.amazonaws.services.route53.model.RRType;
 import com.amazonaws.services.route53.model.ResourceRecord;
 import com.amazonaws.services.route53.model.ResourceRecordSet;
-
-import static net.gftc.aws.Clients.route53;
 
 /**
  * Route53 integration utilities
