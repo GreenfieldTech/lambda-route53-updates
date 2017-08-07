@@ -1,12 +1,12 @@
-package net.gftc.aws.route53.eventhandler;
+package tech.greenfield.aws.route53.eventhandler;
+
+import static tech.greenfield.aws.Clients.autoscaling;
 
 import com.amazonaws.services.autoscaling.model.CompleteLifecycleActionRequest;
 import com.amazonaws.services.lambda.runtime.Context;
 
-import net.gftc.aws.route53.EventHandler;
-import net.gftc.aws.route53.LifeCycleNotification;
-
-import static net.gftc.aws.Clients.autoscaling;
+import tech.greenfield.aws.route53.EventHandler;
+import tech.greenfield.aws.route53.LifeCycleNotification;
 
 public class LifeCycle extends EventHandler {
 

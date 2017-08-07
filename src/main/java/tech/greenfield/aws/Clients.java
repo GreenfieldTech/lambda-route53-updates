@@ -1,4 +1,6 @@
-package net.gftc.aws;
+package tech.greenfield.aws;
+
+import static tech.greenfield.aws.Tools.getCreds;
 
 import java.util.Objects;
 
@@ -8,8 +10,6 @@ import com.amazonaws.services.autoscaling.AmazonAutoScaling;
 import com.amazonaws.services.autoscaling.AmazonAutoScalingClient;
 import com.amazonaws.services.ec2.AmazonEC2Client;
 import com.amazonaws.services.route53.AmazonRoute53Client;
-
-import static net.gftc.aws.Tools.getCreds;
 
 /**
  * AWS SDK clients helper

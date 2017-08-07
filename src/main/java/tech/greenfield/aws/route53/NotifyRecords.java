@@ -1,8 +1,9 @@
-package net.gftc.aws.route53;
+package tech.greenfield.aws.route53;
 
 import java.util.AbstractMap;
 import java.util.AbstractMap.SimpleEntry;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -64,6 +65,32 @@ public class NotifyRecords implements RequestHandler<SNSEvent, String>{
 		String debug = System.getenv("DEBUG");
 		return Objects.nonNull(debug) && !debug.isEmpty();
 	}
+
+	/**
+	 * Retrieve all environment values whose keys start with the specified prefix
+	 * @param prefix environment variable name prefix
+	 * @return List of environment values
+	 */
+	private static List<String> getEnvByPrefix(String prefix) {
+		return System.getenv().entrySet().stream().filter(e -> e.getKey().startsWith(prefix))
+				.map(e -> e.getValue()).collect(Collectors.toList());
+	}
+	
+	/**
+	 * Retrieve all SRV_RECORD configurations
+	 * @return list of SRV_RECORD configurations
+	 */
+	public static List<String> getSRVConfiguration() {
+		return getEnvByPrefix("SRV_RECORD");
+	}
+	
+	/**
+	 * Retrieve all DNSRR_RECORD configurations
+	 * @return list of DNSRR_RECORD configurations
+	 */
+	public static List<String> getDNSRRConfiguration() {
+		return getEnvByPrefix("DNSRR_RECORD");
+	}
 	
 	/**
 	 * Check if SRV record update was requested by specifying the SRV_RECORD environemtn variable
@@ -71,8 +98,7 @@ public class NotifyRecords implements RequestHandler<SNSEvent, String>{
 	 * @return true if SRV record update is requested
 	 */
 	public static boolean useSRV() {
-		String var = System.getenv("SRV_RECORD");
-		return Objects.nonNull(var) && !var.isEmpty();
+		return !getSRVConfiguration().isEmpty();
 	}
 	
 	/**
@@ -83,19 +109,20 @@ public class NotifyRecords implements RequestHandler<SNSEvent, String>{
 	 * @return A pair where the key is the FQDN to update and the value is the
 	 * 	record set to update (add or remove a record)
 	 */
-	public static SimpleEntry<String,String> getSRV(String hostname) {
-		String var = System.getenv("SRV_RECORD");
-		if (Objects.isNull(var) || var.isEmpty())
-			throw new UnsupportedOperationException(
-					"Cannot construct SRV record without SRV_RECORD environment variable");
-		String[] parts = var.split(":");
-		if (parts.length != 4)
-			throw new UnsupportedOperationException("Invalid SRV_RECORD format - " +
-					"must conform to format '<priority>:<weight>:<port>:<name>'");
-		return new AbstractMap.SimpleEntry<String,String>(
-				parts[3],
-				Stream.of(parts[0], parts[1],parts[2],hostname)
-					.collect(Collectors.joining(" ")));
+	public static Map<String,String> getSRVEntries(String hostname) {
+		return getSRVConfiguration().stream().map(var -> {
+			if (Objects.isNull(var) || var.isEmpty())
+				throw new UnsupportedOperationException(
+						"Cannot construct SRV record without SRV_RECORD environment variable");
+			String[] parts = var.split(":");
+			if (parts.length != 4)
+				throw new UnsupportedOperationException("Invalid SRV_RECORD format - " +
+						"must conform to format '<priority>:<weight>:<port>:<name>'");
+			return new AbstractMap.SimpleEntry<String,String>(
+					parts[3],
+					Stream.of(parts[0], parts[1],parts[2],hostname)
+						.collect(Collectors.joining(" ")));
+		}).collect(Collectors.toMap(SimpleEntry::getKey, SimpleEntry::getValue));
 	}
 	
 	/**
@@ -105,21 +132,7 @@ public class NotifyRecords implements RequestHandler<SNSEvent, String>{
 	 * @return true if DNS round-robin record update is requested
 	 */
 	public static boolean useDNSRR() {
-		String var = System.getenv("DNSRR_RECORD");
-		return Objects.nonNull(var) && !var.isEmpty();
-	}
-	
-	/**
-	 * Return the FQDN for a DNS round-robin record that needs to be updated
-	 * This setting is mandatory if SRV_RECORD is not set
-	 * @return the FQDN of the DNS round robin record set to update (add or remove a record)
-	 */
-	public static String getDNSRR() {
-		String var = System.getenv("DNSRR_RECORD");
-		if (Objects.isNull(var) || var.isEmpty())
-			throw new UnsupportedOperationException(
-					"Cannot construct DNS-RR record without DNSRR_RECORD environment variable");
-		return var;
+		return !getDNSRRConfiguration().isEmpty();
 	}
 
 	/**

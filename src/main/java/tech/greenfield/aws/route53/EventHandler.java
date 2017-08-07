@@ -1,11 +1,12 @@
-package net.gftc.aws.route53;
+package tech.greenfield.aws.route53;
 
-import static net.gftc.aws.Clients.ec2;
-import static net.gftc.aws.Clients.route53;
-import static net.gftc.aws.route53.NotifyRecords.*;
+import static tech.greenfield.aws.Clients.ec2;
+import static tech.greenfield.aws.Clients.route53;
+import static tech.greenfield.aws.route53.NotifyRecords.*;
 
 import java.io.IOException;
 import java.util.AbstractMap.SimpleEntry;
+import java.util.Map;
 import java.util.Objects;
 
 import com.amazonaws.services.ec2.model.DescribeInstancesRequest;
@@ -20,8 +21,8 @@ import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
-import net.gftc.aws.route53.eventhandler.AutoScaling;
-import net.gftc.aws.route53.eventhandler.LifeCycle;
+import tech.greenfield.aws.route53.eventhandler.AutoScaling;
+import tech.greenfield.aws.route53.eventhandler.LifeCycle;
 
 /**
  * Handler for a single SNS event that was submitted to the lambda implementation
@@ -143,11 +144,10 @@ public class EventHandler {
 
 		ChangeResourceRecordSetsRequest req = null;
 		if (useDNSRR())
-			req = Tools.getAndRemoveRecord(getDNSRR(), RRType.A, i.getPublicIpAddress());
+			req = Tools.getAndRemoveRecord(getDNSRRConfiguration().stream().map(hostname -> new SimpleEntry<>(hostname, i.getPublicIpAddress())), RRType.A);
 		
 		if (useSRV()) {
-			SimpleEntry<String, String> record = getSRV(i.getPublicDnsName());
-			ChangeResourceRecordSetsRequest srvReq = Tools.getAndRemoveRecord(record.getKey(), RRType.SRV, record.getValue());
+			ChangeResourceRecordSetsRequest srvReq = Tools.getAndRemoveRecord(getSRVEntries(i.getPublicDnsName()).entrySet().stream(), RRType.SRV);
 			if (Objects.isNull(req))
 				req = srvReq;
 			else {
@@ -177,11 +177,11 @@ public class EventHandler {
 		
 		ChangeResourceRecordSetsRequest req = null;
 		if (useDNSRR())
-			req = Tools.getAndAddRecord(getDNSRR(), RRType.A, i.getPublicIpAddress());
+			req = Tools.getAndAddRecord(getDNSRRConfiguration().stream().map(hostname -> new SimpleEntry<>(hostname, i.getPublicIpAddress())), RRType.A);
 		
 		if (useSRV()) {
-			SimpleEntry<String, String> record = getSRV(i.getPublicDnsName());
-			ChangeResourceRecordSetsRequest srvReq = Tools.getAndAddRecord(record.getKey(), RRType.SRV, record.getValue());
+			Map<String, String> records = getSRVEntries(i.getPublicDnsName());
+			ChangeResourceRecordSetsRequest srvReq = Tools.getAndAddRecord(records.entrySet().stream(), RRType.SRV);
 			if (Objects.isNull(req))
 				req = srvReq;
 			else {

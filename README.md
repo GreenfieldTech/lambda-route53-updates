@@ -30,7 +30,7 @@ Create an AWS Lambda and upload the generated JAR, for example - using the AWS C
 role with the correct permissions for accessing the SNS topic you created. [See here for a tutorial on how to create
 AWS Lambda to work with SNS][1].
 
- * Set the Lambda handler to: `net.gftc.aws.route53.NotifyRecords`
+ * Set the Lambda handler to: `tech.greenfield.aws.route53.NotifyRecords`
  * Set the maximum memory usage to 256MB - the implementation doesn't use anywhere close to that, but it appears that
    initialization of the SDK takes a large chunk of memory and the invocation will fail with the default 128MB setting.
  * Set the timeout to 60 seconds - because the lambda waits for the Route53 DNS servers to update before exiting,
@@ -137,7 +137,7 @@ Resources:
       Description: Update DNS with auto-scaled instance public host names
       MemorySize: 256
       Timeout: 60
-      Handler: net.gftc.aws.route53.NotifyRecords
+      Handler: tech.greenfield.aws.route53.NotifyRecords
       Environment:
         Variables:
           HOSTED_ZONE_ID: "Z1111LLLLN7777"

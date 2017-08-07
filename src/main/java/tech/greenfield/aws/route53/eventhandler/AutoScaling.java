@@ -1,9 +1,9 @@
-package net.gftc.aws.route53.eventhandler;
+package tech.greenfield.aws.route53.eventhandler;
 
 import com.amazonaws.services.lambda.runtime.Context;
 
-import net.gftc.aws.route53.AutoScalingNotification;
-import net.gftc.aws.route53.EventHandler;
+import tech.greenfield.aws.route53.AutoScalingNotification;
+import tech.greenfield.aws.route53.EventHandler;
 
 public class AutoScaling extends EventHandler {
 

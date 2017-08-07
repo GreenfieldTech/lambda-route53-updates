@@ -1,4 +1,4 @@
-package net.gftc.aws;
+package tech.greenfield.aws;
 
 import java.util.Objects;
 

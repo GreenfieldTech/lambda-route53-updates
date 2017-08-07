@@ -1,4 +1,4 @@
-package net.gftc.aws.route53;
+package tech.greenfield.aws.route53;
 
 import com.amazonaws.services.kinesisfirehose.model.InvalidArgumentException;
 import com.fasterxml.jackson.annotation.JsonIgnore;
