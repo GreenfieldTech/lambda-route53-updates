@@ -4,6 +4,7 @@ import static tech.greenfield.aws.Clients.route53;
 
 import java.util.HashSet;
 import java.util.Objects;
+import java.util.Map;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -108,47 +109,47 @@ public class Tools {
 	 * @param value record to add to the resource record set
 	 * @return Change request that can be submitted to Route53
 	 */
-	public static ChangeResourceRecordSetsRequest getAndAddRecord(String hostname, RRType rtype, String value) {
-		ResourceRecordSet rr = Tools.getRecordSet(hostname, rtype);
-		rr.getResourceRecords().add(new ResourceRecord(value));
-		HashSet<ResourceRecord> uniqRRs = new HashSet<>(rr.getResourceRecords());
-		rr.setResourceRecords(uniqRRs);
-		return rrsetToChange(rr);
+	public static ChangeResourceRecordSetsRequest getAndAddRecord(Stream<Map.Entry<String, String>> mappings, RRType rtype) {
+		return rrsetsToChange(mappings.map(record -> {
+			ResourceRecordSet rr = Tools.getRecordSet(record.getKey(), rtype);
+			rr.getResourceRecords().add(new ResourceRecord(record.getValue()));
+			HashSet<ResourceRecord> uniqRRs = new HashSet<>(rr.getResourceRecords());
+			rr.setResourceRecords(uniqRRs);
+			return rr;
+		}));
 	}
 
 	/**
 	 * Create a Route53 change request that removes the specified value to the specified
 	 * existing resource record set
-	 * @param hostname FQDN of resource record set to update
+	 * @param hostnames FQDNs of resource record set to update
 	 * @param rtype RR type of resource record set to update
 	 * @param value record to match and remove from the resource record set
 	 * @return Change request that can be submitted to Route53
 	 */
-	public static ChangeResourceRecordSetsRequest getAndRemoveRecord(String hostname, RRType rtype, String value) {
-		return rrsetToChange(
-				removeRecord(
-						getRecordSet(hostname, rtype),
-						r -> Objects.equals(r.getValue(), value)));
+	public static ChangeResourceRecordSetsRequest getAndRemoveRecord(Stream<Map.Entry<String, String>> mappings, RRType rtype) {
+		return rrsetsToChange(mappings.map(record ->
+				removeRecord(getRecordSet(record.getKey(), rtype), r -> Objects.equals(r.getValue(), record.getValue()))));
 	}
 
 	/**
 	 * Create an UPSERT {@link ChangeResourceRecordSetsRequest} from a resource record set
 	 * This method relies on {@link NotifyRecords#getHostedZoneId()} which
 	 * requires setting the environment variable HOSTED_ZONE_ID
-	 * @param rrset resource record set to "upsert"
+	 * @param rrsets resource record set to "upsert"
 	 * @return Change resource record set request to submit to Route53
 	 */
-	private static ChangeResourceRecordSetsRequest rrsetToChange(ResourceRecordSet rrset) {
+	private static ChangeResourceRecordSetsRequest rrsetsToChange(Stream<ResourceRecordSet> rrsets) {
 		return new ChangeResourceRecordSetsRequest(
 				NotifyRecords.getHostedZoneId(),
-				new ChangeBatch(Stream.of(
+				new ChangeBatch(rrsets.map(rr ->
 						new Change(
-								rrset.getResourceRecords().isEmpty() ? 
+								rr.getResourceRecords().isEmpty() ? 
 										// if the record set is empty, we should delete the record
 										ChangeAction.DELETE :
 										// otherwise we upsert
 										ChangeAction.UPSERT,
-								rrset)
+								rr)
 							).collect(Collectors.toList()))
 					);
 	}

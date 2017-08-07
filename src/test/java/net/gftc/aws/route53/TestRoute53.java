@@ -4,6 +4,8 @@ import static org.junit.Assert.*;
 import static tech.greenfield.aws.Clients.route53;
 
 import java.util.Objects;
+import java.util.stream.Stream;
+import java.util.AbstractMap.SimpleEntry;
 
 import org.junit.Test;
 
@@ -41,8 +43,7 @@ public class TestRoute53 {
 	public void testAddA() {
 		if (disableLiveTests) return;
 		ChangeResourceRecordSetsRequest cr = Tools.getAndAddRecord(
-				"test." + testDomain, 
-				RRType.A, "5.6.7.8");
+				Stream.of(new SimpleEntry<>("test." + testDomain, "5.6.7.8")), RRType.A);
 		Tools.waitFor(route53().changeResourceRecordSets(cr));
 		assertTrue(true);
 	}
@@ -51,8 +52,8 @@ public class TestRoute53 {
 	public void testRemoveA() {
 		if (disableLiveTests) return;
 		ChangeResourceRecordSetsRequest cr = Tools.getAndRemoveRecord(
-				"test." + testDomain, 
-				RRType.A, "1.2.3.4");
+				Stream.of(new SimpleEntry<>("test." + testDomain, "1.2.3.4")), 
+				RRType.A);
 		Tools.waitFor(route53().changeResourceRecordSets(cr));
 		assertTrue(true);
 	}
@@ -61,12 +62,12 @@ public class TestRoute53 {
 	public void testAddSRV() {
 		if (disableLiveTests) return;
 		ChangeResourceRecordSetsRequest cr = Tools.getAndAddRecord(
-				"_sip._udp.test." + testDomain, 
-				RRType.SRV, "1 1 5060 test1." + testDomain);
+				Stream.of(new SimpleEntry<>("_sip._udp.test." + testDomain, "1 1 5060 test1." + testDomain)), 
+				RRType.SRV);
 		Tools.waitFor(route53().changeResourceRecordSets(cr));
 		ChangeResourceRecordSetsRequest cr2 = Tools.getAndAddRecord(
-				"_sip._udp.test." + testDomain, 
-				RRType.SRV, "1 1 5060 test2." + testDomain);
+				Stream.of(new SimpleEntry<>("_sip._udp.test." + testDomain, "1 1 5060 test2." + testDomain)), 
+				RRType.SRV);
 		Tools.waitFor(route53().changeResourceRecordSets(cr2));
 		assertTrue(true);
 	}
@@ -75,8 +76,8 @@ public class TestRoute53 {
 	public void testRemoveSRV() {
 		if (disableLiveTests) return;
 		ChangeResourceRecordSetsRequest cr = Tools.getAndRemoveRecord(
-				"_sip._udp.test." + testDomain, 
-				RRType.SRV, "1 1 5060 test1." + testDomain);
+				Stream.of(new SimpleEntry<>("_sip._udp.test." + testDomain, "1 1 5060 test1." + testDomain)), 
+				RRType.SRV);
 		Tools.waitFor(route53().changeResourceRecordSets(cr));
 		assertTrue(true);
 	}
