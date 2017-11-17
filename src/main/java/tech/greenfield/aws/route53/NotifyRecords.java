@@ -12,7 +12,6 @@ import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.events.SNSEvent;
 import com.amazonaws.services.lambda.runtime.events.SNSEvent.SNSRecord;
-import com.amazonaws.services.sqs.model.UnsupportedOperationException;
 
 /**
  * Main entry point from the AWS Lambda engine, that takes an SNS event
@@ -34,29 +33,41 @@ import com.amazonaws.services.sqs.model.UnsupportedOperationException;
  *     License along with this library; if not, write to the Free Software
  *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
-public class NotifyRecords implements RequestHandler<SNSEvent, String>{
+public class NotifyRecords implements RequestHandler<SNSEvent, Route53UpdateResponse>{
 
 	/**
 	 * Main entry point
 	 */
-	public String handleRequest(SNSEvent input, Context context) {
-		if (Objects.isNull(input)) {
-			context.getLogger().log("Invalid SNS input object");
-			return "Error: no SNS event input";
+	public Route53UpdateResponse handleRequest(SNSEvent input, Context context) {
+		try {
+			if (Objects.isNull(input)) {
+				context.getLogger().log("Invalid SNS input object");
+				return error("no SNS event input");
+			}
+			List<SNSRecord> records = input.getRecords();
+			if (Objects.isNull(records)) {
+				context.getLogger().log("No SNS events in input");
+				return error("no SNS events");
+			}
+			records.parallelStream()
+				.map(e -> EventHandler.create(context, e))
+				.forEach(EventHandler::handle);
+			return ok();
+		} catch (Throwable t) {
+			return error(t.toString()); 
 		}
-		List<SNSRecord> records = input.getRecords();
-		if (Objects.isNull(records)) {
-			context.getLogger().log("No SNS events in input");
-			return "Error: no SNS events";
-		}
-		records.parallelStream()
-			.map(e -> EventHandler.create(context, e))
-			.forEach(EventHandler::handle);
-		return "OK";
 	}
 	
 	/* ==- Helper Utilities -== */
 	
+	private Route53UpdateResponse ok() {
+		return new Route53UpdateResponse(true, "OK");
+	}
+
+	private Route53UpdateResponse error(String message) {
+		return new Route53UpdateResponse(false, "Error: " + message);
+	}
+
 	/**
 	 * Check if we need to enable debug mode
 	 * @return true if debug mode was requested by setting the DEBUG environment variable
