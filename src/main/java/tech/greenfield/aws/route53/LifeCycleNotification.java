@@ -1,6 +1,5 @@
 package tech.greenfield.aws.route53;
 
-import com.amazonaws.services.kinesisfirehose.model.InvalidArgumentException;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
 /**
@@ -88,7 +87,7 @@ public class LifeCycleNotification {
 		switch (lifecycleTransition) {
 		case EC2_INSTANCE_LAUNCHING: return EventType.EC2_INSTANCE_LAUNCH;
 		case EC2_INSTANCE_TERMINATING: return EventType.EC2_INSTANCE_TERMINATE;
-		default: throw new InvalidArgumentException("Unsupported lifecycle event type: " + lifecycleTransition);
+		default: throw new RuntimeException("Unsupported lifecycle event type: " + lifecycleTransition);
 		}
 	}
 	
