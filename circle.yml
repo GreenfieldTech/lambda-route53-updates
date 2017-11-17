@@ -1,9 +1,19 @@
 machine:
   java:
     version: openjdk8
+
 dependencies:
+  pre:
+    - go get github.com/tcnksm/ghr
   override:
     - mvn -B package shade:shade
+
 test:
   post:
     - install -D -m644 target/lambda-route53-updates-*.jar $CIRCLE_ARTIFACTS
+
+deployment:
+  release:
+    tag: /(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)/
+    commands:
+      - ghr -t $GITHUB_TOKEN -u $CIRCLE_PROJECT_USERNAME -r $CIRCLE_PROJECT_REPONAME --replace `git describe --tags` $CIRCLE_ARTIFACTS

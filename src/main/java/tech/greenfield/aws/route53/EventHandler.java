@@ -9,6 +9,7 @@ import java.util.AbstractMap.SimpleEntry;
 import java.util.Map;
 import java.util.Objects;
 
+import com.amazonaws.SdkBaseException;
 import com.amazonaws.services.ec2.model.DescribeInstancesRequest;
 import com.amazonaws.services.ec2.model.Instance;
 import com.amazonaws.services.lambda.runtime.Context;
@@ -99,8 +100,8 @@ public class EventHandler {
 				break;
 			default: // do nothing in case of launch error or test notifcation
 			}
-		} catch (SilentFailure e) {
-			log("Silently failing Route53 update: " + e.getMessage());
+		} catch (SilentFailure | SdkBaseException e) {
+			log("Silently failing Route53 update: " + e);
 		}
 	}
 
