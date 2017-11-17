@@ -52,8 +52,10 @@ public class NotifyRecords implements RequestHandler<SNSEvent, Route53UpdateResp
 			records.parallelStream()
 				.map(e -> EventHandler.create(context, e))
 				.forEach(EventHandler::handle);
+			context.getLogger().log("Done updating Route53");
 			return ok();
 		} catch (Throwable t) {
+			context.getLogger().log("Unexpected error while updating Route53: " + t);
 			return error(t.toString()); 
 		}
 	}
