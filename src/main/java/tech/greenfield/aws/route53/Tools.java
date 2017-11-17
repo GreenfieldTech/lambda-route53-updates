@@ -112,10 +112,11 @@ public class Tools {
 	public static ChangeResourceRecordSetsRequest getAndAddRecord(Stream<Map.Entry<String, String>> mappings, RRType rtype) {
 		return rrsetsToChange(mappings.map(record -> {
 			ResourceRecordSet rr = Tools.getRecordSet(record.getKey(), rtype);
+			ResourceRecordSet origrr = rr.clone();
 			rr.getResourceRecords().add(new ResourceRecord(record.getValue()));
 			HashSet<ResourceRecord> uniqRRs = new HashSet<>(rr.getResourceRecords());
 			rr.setResourceRecords(uniqRRs);
-			return rr;
+			return new ResourceRecordSetChange(origrr, rr);
 		}));
 	}
 
@@ -128,8 +129,12 @@ public class Tools {
 	 * @return Change request that can be submitted to Route53
 	 */
 	public static ChangeResourceRecordSetsRequest getAndRemoveRecord(Stream<Map.Entry<String, String>> mappings, RRType rtype) {
-		return rrsetsToChange(mappings.map(record ->
-				removeRecord(getRecordSet(record.getKey(), rtype), r -> Objects.equals(r.getValue(), record.getValue()))));
+		ChangeResourceRecordSetsRequest request = rrsetsToChange(mappings.map(record -> {
+			ResourceRecordSet origRecord = getRecordSet(record.getKey(), rtype);
+			ResourceRecordSet update = removeRecord(origRecord, r -> Objects.equals(r.getValue(), record.getValue()));
+			return new ResourceRecordSetChange(origRecord, update);
+		}));
+		return request;
 	}
 
 	/**
@@ -139,20 +144,33 @@ public class Tools {
 	 * @param rrsets resource record set to "upsert"
 	 * @return Change resource record set request to submit to Route53
 	 */
-	private static ChangeResourceRecordSetsRequest rrsetsToChange(Stream<ResourceRecordSet> rrsets) {
-		return new ChangeResourceRecordSetsRequest(
-				NotifyRecords.getHostedZoneId(),
-				new ChangeBatch(rrsets.map(rr ->
-						new Change(
-								rr.getResourceRecords().isEmpty() ? 
-										// if the record set is empty, we should delete the record
-										ChangeAction.DELETE :
-										// otherwise we upsert
-										ChangeAction.UPSERT,
-								rr)
-							).collect(Collectors.toList()))
-					);
+	private static ChangeResourceRecordSetsRequest rrsetsToChange(Stream<ResourceRecordSetChange> rrsets) {
+		return new ChangeResourceRecordSetsRequest(NotifyRecords.getHostedZoneId(),
+				new ChangeBatch(rrsets.map(rr -> rr.removedAll() ? 
+						new Change(ChangeAction.DELETE, rr.oldRRS()) : 
+							new Change(ChangeAction.UPSERT, rr.newRRS())).collect(Collectors.toList())));
 	}
+	
+	private static class ResourceRecordSetChange {
+		private ResourceRecordSet oldset;
+		private ResourceRecordSet newset;
 
+		public ResourceRecordSetChange(ResourceRecordSet oldset, ResourceRecordSet newset) {
+			this.oldset = oldset;
+			this.newset = newset;
+		}
+
+		public ResourceRecordSet newRRS() {
+			return newset;
+		}
+
+		public ResourceRecordSet oldRRS() {
+			return oldset;
+		}
+
+		public boolean removedAll() {
+			return newset.getResourceRecords().isEmpty();
+		}
+	}
 
 }
