@@ -2,7 +2,7 @@
 
 Java AWS Lambda package that receives notifications to update Route53 Hosted Zone DNS records.
 
-This configurable implementation allows AWS Auto Scaling Groups to send events to SNS topics that will cause Route53 DNS
+This configurable implementation allows AWS Auto Scaling Groups to send events to SNS[1] topics that will cause Route53 DNS
 resource records to be updated with the IP addresses of launched instances.
 
 Features:
