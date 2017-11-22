@@ -2,7 +2,7 @@
 
 Java AWS Lambda package that receives notifications to update Route53 Hosted Zone DNS records.
 
-This configurable implementation allows AWS Auto Scaling Groups to send events to SNS topics that will cause Route53 DNS
+This configurable implementation allows AWS Auto Scaling Groups to send events to SNS[1] topics that will cause Route53 DNS
 resource records to be updated with the IP addresses of launched instances.
 
 Features:
@@ -61,13 +61,15 @@ The lambda function reads the following environment variables:
 
  * `HOSTED_ZONE_ID` - specify the Route53 Hosted Zone identifier, as can be found from the Route53 console. Required.
  * `DNSRR_RECORD` - specify the fully qualified domain name (with or without a terminating dot) that you want the lambda to update.
-   Optional - either this setting or the `SRV_RECORD` setting must be specified.
+   Optional - either this setting and/or the `SRV_RECORD` setting must be specified.
  * `SRV_RECORD` - specify the fully qualified domain name (with or without a terminating dot) that you want the lambda to update,
    including the required priority, weight and port (currently we assume these all to be set identically for all records). This
    setting requires a specific format to be used - a colon delimited list in the following format: 
 ```
 <priority>:<weight>:<port>:<fqdn>
 ```
+   Optional - either this setting and/or the `DNSRR_RECORD` setting must be specified.
+ * `TTL` - specify a TTL in seconds to be set for new records created by lambda-route53-updates. If not specified defaults to 300.
  * `DEBUG` - enable debug logging. This mostly logs the raw SNS message that was received, to debug the parser. Optional.
  * `AWS_PROFILE` - support local testing (outside AWS Lambda). Normally the code assumes an IAM profile will be used to provide the
    required authorization, but when testing the code locally, one may use an AWS CLI credentials file. This setting allows a local
