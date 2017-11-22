@@ -35,6 +35,8 @@ import com.amazonaws.services.lambda.runtime.events.SNSEvent.SNSRecord;
  */
 public class NotifyRecords implements RequestHandler<SNSEvent, Route53UpdateResponse>{
 
+	private static final long DEFAULT_TTL = 300;
+
 	/**
 	 * Main entry point
 	 */
@@ -77,6 +79,17 @@ public class NotifyRecords implements RequestHandler<SNSEvent, Route53UpdateResp
 	public static boolean isDebug() {
 		String debug = System.getenv("DEBUG");
 		return Objects.nonNull(debug) && !debug.isEmpty();
+	}
+	
+	public static long getTTL() {
+		String ttl = System.getenv("TTL");
+		if (Objects.nonNull(ttl))
+			try {
+				return Long.parseLong(ttl);
+			} catch (NumberFormatException e) {
+				return DEFAULT_TTL;
+			}
+		return DEFAULT_TTL;
 	}
 
 	/**

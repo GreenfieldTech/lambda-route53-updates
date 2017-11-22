@@ -43,7 +43,7 @@ public class TestRoute53 {
 	public void testAddA() {
 		if (disableLiveTests) return;
 		ChangeResourceRecordSetsRequest cr = Tools.getAndAddRecord(
-				Stream.of(new SimpleEntry<>("test." + testDomain, "5.6.7.8")), RRType.A);
+				Stream.of(new SimpleEntry<>("test." + testDomain, "5.6.7.8")), RRType.A, 30);
 		Tools.waitFor(route53().changeResourceRecordSets(cr));
 		assertTrue(true);
 	}
@@ -53,7 +53,7 @@ public class TestRoute53 {
 		if (disableLiveTests) return;
 		ChangeResourceRecordSetsRequest cr = Tools.getAndRemoveRecord(
 				Stream.of(new SimpleEntry<>("test." + testDomain, "1.2.3.4")), 
-				RRType.A);
+				RRType.A, 30);
 		Tools.waitFor(route53().changeResourceRecordSets(cr));
 		assertTrue(true);
 	}
@@ -63,11 +63,11 @@ public class TestRoute53 {
 		if (disableLiveTests) return;
 		ChangeResourceRecordSetsRequest cr = Tools.getAndAddRecord(
 				Stream.of(new SimpleEntry<>("_sip._udp.test." + testDomain, "1 1 5060 test1." + testDomain)), 
-				RRType.SRV);
+				RRType.SRV, 30);
 		Tools.waitFor(route53().changeResourceRecordSets(cr));
 		ChangeResourceRecordSetsRequest cr2 = Tools.getAndAddRecord(
 				Stream.of(new SimpleEntry<>("_sip._udp.test." + testDomain, "1 1 5060 test2." + testDomain)), 
-				RRType.SRV);
+				RRType.SRV, 30);
 		Tools.waitFor(route53().changeResourceRecordSets(cr2));
 		assertTrue(true);
 	}
@@ -77,7 +77,7 @@ public class TestRoute53 {
 		if (disableLiveTests) return;
 		ChangeResourceRecordSetsRequest cr = Tools.getAndRemoveRecord(
 				Stream.of(new SimpleEntry<>("_sip._udp.test." + testDomain, "1 1 5060 test1." + testDomain)), 
-				RRType.SRV);
+				RRType.SRV, 30);
 		Tools.waitFor(route53().changeResourceRecordSets(cr));
 		assertTrue(true);
 	}
