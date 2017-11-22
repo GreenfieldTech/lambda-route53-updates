@@ -91,6 +91,11 @@ public class NotifyRecords implements RequestHandler<SNSEvent, Route53UpdateResp
 			}
 		return DEFAULT_TTL;
 	}
+	
+	public static boolean isPrivate() {
+		String privateIP = System.getenv("DNSRR_PRIVATE");
+		return Objects.nonNull(privateIP) && !privateIP.isEmpty();
+	}
 
 	/**
 	 * Retrieve all environment values whose keys start with the specified prefix

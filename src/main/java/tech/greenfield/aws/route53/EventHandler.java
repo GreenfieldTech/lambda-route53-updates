@@ -140,7 +140,8 @@ public class EventHandler {
 	 * @return record removal request for Route53
 	 */
 	private ChangeResourceRecordSetsRequest createRemoveChangeRequest(Instance i, long ttl) {
-		String ip = i.getPublicIpAddress(), addr = i.getPublicDnsName();
+		String ip = isPrivate() ? i.getPrivateIpAddress() : i.getPublicIpAddress(),
+				addr = isPrivate() ? i.getPrivateDnsName() : i.getPublicDnsName();
 				
 		if (Objects.isNull(ip))
 			throw new SilentFailure("Corwardly refusing to remove an instance with no IP address");
@@ -176,7 +177,8 @@ public class EventHandler {
 	 * @return record addition request for Route53
 	 */
 	private ChangeResourceRecordSetsRequest createAddChangeRequest(Instance i, long ttl) {
-		String ip = i.getPublicIpAddress(), addr = i.getPublicDnsName();
+		String ip = isPrivate() ? i.getPrivateIpAddress() : i.getPublicIpAddress(),
+				addr = isPrivate() ? i.getPrivateDnsName() : i.getPublicDnsName();
 		
 		if (Objects.isNull(ip))
 			throw new SilentFailure("Corwardly refusing to add an instance with no IP address");
