@@ -92,11 +92,11 @@ public class EventHandler {
 		try {
 			switch (eventType) {
 			case EC2_INSTANCE_LAUNCH:
-				registerInstance(ec2instanceId, getTTL());
+				registerInstance(ec2instanceId);
 				break;
 			case EC2_INSTANCE_TERMINATE:
 			case EC2_INSTANCE_TERMINATE_ERROR:
-				deregisterIsntance(ec2instanceId, getTTL());
+				deregisterIsntance(ec2instanceId);
 				break;
 			default: // do nothing in case of launch error or test notifcation
 			}
@@ -110,10 +110,10 @@ public class EventHandler {
 	 * @param ec2InstanceId instance ID of instance that needs to be registered
 	 * @param ttl TTL in seconds to use when creating a new record
 	 */
-	private void registerInstance(String ec2InstanceId, long ttl) {
+	private void registerInstance(String ec2InstanceId) {
 		log("Registering " + ec2InstanceId);
 		Instance i = getInstance(ec2InstanceId);
-		ChangeResourceRecordSetsRequest req = createAddChangeRequest(i, ttl);
+		ChangeResourceRecordSetsRequest req = createAddChangeRequest(i, getTTL());
 		if (isDebug())
 			log("Sending rr change requset: " + req);
 		Tools.waitFor(route53().changeResourceRecordSets(req));
@@ -124,10 +124,10 @@ public class EventHandler {
 	 * @param ec2InstanceId instance ID of instance that needs to be de-registered
 	 * @param ttl TTL in seconds to use when creating a new record
 	 */
-	private void deregisterIsntance(String ec2InstanceId, long ttl) {
+	private void deregisterIsntance(String ec2InstanceId) {
 		log("Deregistering " + ec2InstanceId);
 		Instance i = getInstance(ec2InstanceId);
-		ChangeResourceRecordSetsRequest req = createRemoveChangeRequest(i, ttl);
+		ChangeResourceRecordSetsRequest req = createRemoveChangeRequest(i, getTTL());
 		if (isDebug())
 			log("Sending rr change request: " + req);
 		Tools.waitFor(route53().changeResourceRecordSets(req));
