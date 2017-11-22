@@ -66,10 +66,10 @@ public class Tools {
 	 * requires setting the environment variable HOSTED_ZONE_ID
 	 * @param hostname FQDN of record set to retrieve
 	 * @param type RR type of record to retrieve
+	 * @param ttl TTL in seconds to use if generating an empty record
 	 * @return The record set retrieved from Route53 or an empty record set 
-	 * 	(with a default 300 seconds TTL)
 	 */
-	public static ResourceRecordSet getRecordSet(String hostname, RRType type) {
+	public static ResourceRecordSet getRecordSet(String hostname, RRType type, long ttl) {
 		if (!hostname.endsWith("."))
 			hostname = hostname + ".";
 		final String domainname = hostname;
@@ -81,7 +81,7 @@ public class Tools {
 		return route53().listResourceRecordSets(req).getResourceRecordSets().stream()
 				.filter(rr -> rr.getName().equals(domainname))
 				.findAny().orElse(new ResourceRecordSet(domainname, type)
-						.withTTL(300L));
+						.withTTL(ttl));
 	}
 
 	/**
@@ -106,12 +106,13 @@ public class Tools {
 	 * existing resource record set
 	 * @param hostname FQDN of resource record set to update
 	 * @param rtype RR type of resource record set to update
+	 * @param ttl TTL in seconds to use when creating a new record 
 	 * @param value record to add to the resource record set
 	 * @return Change request that can be submitted to Route53
 	 */
-	public static ChangeResourceRecordSetsRequest getAndAddRecord(Stream<Map.Entry<String, String>> mappings, RRType rtype) {
+	public static ChangeResourceRecordSetsRequest getAndAddRecord(Stream<Map.Entry<String, String>> mappings, RRType rtype, long ttl) {
 		return rrsetsToChange(mappings.map(record -> {
-			ResourceRecordSet rr = Tools.getRecordSet(record.getKey(), rtype);
+			ResourceRecordSet rr = Tools.getRecordSet(record.getKey(), rtype, ttl);
 			ResourceRecordSet origrr = rr.clone();
 			rr.getResourceRecords().add(new ResourceRecord(record.getValue()));
 			HashSet<ResourceRecord> uniqRRs = new HashSet<>(rr.getResourceRecords());
@@ -125,12 +126,13 @@ public class Tools {
 	 * existing resource record set
 	 * @param hostnames FQDNs of resource record set to update
 	 * @param rtype RR type of resource record set to update
+	 * @param ttl TTL in seconds to use when creating a new record
 	 * @param value record to match and remove from the resource record set
 	 * @return Change request that can be submitted to Route53
 	 */
-	public static ChangeResourceRecordSetsRequest getAndRemoveRecord(Stream<Map.Entry<String, String>> mappings, RRType rtype) {
+	public static ChangeResourceRecordSetsRequest getAndRemoveRecord(Stream<Map.Entry<String, String>> mappings, RRType rtype, long ttl) {
 		ChangeResourceRecordSetsRequest request = rrsetsToChange(mappings.map(record -> {
-			ResourceRecordSet origRecord = getRecordSet(record.getKey(), rtype);
+			ResourceRecordSet origRecord = getRecordSet(record.getKey(), rtype, ttl);
 			ResourceRecordSet update = removeRecord(origRecord, r -> Objects.equals(r.getValue(), record.getValue()));
 			return new ResourceRecordSetChange(origRecord, update);
 		}));
