@@ -70,6 +70,10 @@ The lambda function reads the following environment variables:
 ```
    Optional - either this setting and/or the `DNSRR_RECORD` setting must be specified.
  * `TTL` - specify a TTL in seconds to be set for new records created by lambda-route53-updates. If not specified defaults to 300.
+ * `PRIVATE` - configure lambda-route53-updates to use the instances local (private) addresses when setting up DNS records, instead of
+   public addresses. This is useful for implementing a split-horizon DNS setup, where you want to configure an additional lambda
+   to update the private side of the zone. This setting affects both `DNSRR_RECORD` and `SRV_RECORD` configurations, if both are
+   set on the same lambda. 
  * `DEBUG` - enable debug logging. This mostly logs the raw SNS message that was received, to debug the parser. Optional.
  * `AWS_PROFILE` - support local testing (outside AWS Lambda). Normally the code assumes an IAM profile will be used to provide the
    required authorization, but when testing the code locally, one may use an AWS CLI credentials file. This setting allows a local

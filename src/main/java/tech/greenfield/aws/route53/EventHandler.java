@@ -92,11 +92,11 @@ public class EventHandler {
 		try {
 			switch (eventType) {
 			case EC2_INSTANCE_LAUNCH:
-				registerInstance(ec2instanceId, getTTL());
+				registerInstance(ec2instanceId);
 				break;
 			case EC2_INSTANCE_TERMINATE:
 			case EC2_INSTANCE_TERMINATE_ERROR:
-				deregisterIsntance(ec2instanceId, getTTL());
+				deregisterIsntance(ec2instanceId);
 				break;
 			default: // do nothing in case of launch error or test notifcation
 			}
@@ -110,10 +110,10 @@ public class EventHandler {
 	 * @param ec2InstanceId instance ID of instance that needs to be registered
 	 * @param ttl TTL in seconds to use when creating a new record
 	 */
-	private void registerInstance(String ec2InstanceId, long ttl) {
+	private void registerInstance(String ec2InstanceId) {
 		log("Registering " + ec2InstanceId);
 		Instance i = getInstance(ec2InstanceId);
-		ChangeResourceRecordSetsRequest req = createAddChangeRequest(i, ttl);
+		ChangeResourceRecordSetsRequest req = createAddChangeRequest(i, getTTL());
 		if (isDebug())
 			log("Sending rr change requset: " + req);
 		Tools.waitFor(route53().changeResourceRecordSets(req));
@@ -124,10 +124,10 @@ public class EventHandler {
 	 * @param ec2InstanceId instance ID of instance that needs to be de-registered
 	 * @param ttl TTL in seconds to use when creating a new record
 	 */
-	private void deregisterIsntance(String ec2InstanceId, long ttl) {
+	private void deregisterIsntance(String ec2InstanceId) {
 		log("Deregistering " + ec2InstanceId);
 		Instance i = getInstance(ec2InstanceId);
-		ChangeResourceRecordSetsRequest req = createRemoveChangeRequest(i, ttl);
+		ChangeResourceRecordSetsRequest req = createRemoveChangeRequest(i, getTTL());
 		if (isDebug())
 			log("Sending rr change request: " + req);
 		Tools.waitFor(route53().changeResourceRecordSets(req));
@@ -140,18 +140,21 @@ public class EventHandler {
 	 * @return record removal request for Route53
 	 */
 	private ChangeResourceRecordSetsRequest createRemoveChangeRequest(Instance i, long ttl) {
-		if (Objects.isNull(i.getPublicIpAddress()))
+		String ip = isPrivate() ? i.getPrivateIpAddress() : i.getPublicIpAddress(),
+				addr = isPrivate() ? i.getPrivateDnsName() : i.getPublicDnsName();
+				
+		if (Objects.isNull(ip))
 			throw new SilentFailure("Corwardly refusing to remove an instance with no IP address");
 		
 		if (isDebug())
-			log("Removing instance with addresses: " + i.getPublicIpAddress() + ", " + i.getPublicDnsName());
+			log("Removing instance with addresses: " + ip + ", " + addr);
 
 		ChangeResourceRecordSetsRequest req = null;
 		if (useDNSRR())
-			req = Tools.getAndRemoveRecord(getDNSRRConfiguration().stream().map(hostname -> new SimpleEntry<>(hostname, i.getPublicIpAddress())), RRType.A, ttl);
+			req = Tools.getAndRemoveRecord(getDNSRRConfiguration().stream().map(hostname -> new SimpleEntry<>(hostname, ip)), RRType.A, ttl);
 		
 		if (useSRV()) {
-			ChangeResourceRecordSetsRequest srvReq = Tools.getAndRemoveRecord(getSRVEntries(i.getPublicDnsName()).entrySet().stream(), RRType.SRV, ttl);
+			ChangeResourceRecordSetsRequest srvReq = Tools.getAndRemoveRecord(getSRVEntries(addr).entrySet().stream(), RRType.SRV, ttl);
 			if (Objects.isNull(req))
 				req = srvReq;
 			else {
@@ -174,18 +177,21 @@ public class EventHandler {
 	 * @return record addition request for Route53
 	 */
 	private ChangeResourceRecordSetsRequest createAddChangeRequest(Instance i, long ttl) {
-		if (Objects.isNull(i.getPublicIpAddress()))
+		String ip = isPrivate() ? i.getPrivateIpAddress() : i.getPublicIpAddress(),
+				addr = isPrivate() ? i.getPrivateDnsName() : i.getPublicDnsName();
+		
+		if (Objects.isNull(ip))
 			throw new SilentFailure("Corwardly refusing to add an instance with no IP address");
 		
 		if (isDebug())
-			log("Adding instance with addresses: " + i.getPublicIpAddress() + ", " + i.getPublicDnsName());
+			log("Adding instance with addresses: " + ip + ", " + addr);
 		
 		ChangeResourceRecordSetsRequest req = null;
 		if (useDNSRR())
-			req = Tools.getAndAddRecord(getDNSRRConfiguration().stream().map(hostname -> new SimpleEntry<>(hostname, i.getPublicIpAddress())), RRType.A, ttl);
+			req = Tools.getAndAddRecord(getDNSRRConfiguration().stream().map(hostname -> new SimpleEntry<>(hostname, ip)), RRType.A, ttl);
 		
 		if (useSRV()) {
-			Map<String, String> records = getSRVEntries(i.getPublicDnsName());
+			Map<String, String> records = getSRVEntries(addr);
 			ChangeResourceRecordSetsRequest srvReq = Tools.getAndAddRecord(records.entrySet().stream(), RRType.SRV, ttl);
 			if (Objects.isNull(req))
 				req = srvReq;
