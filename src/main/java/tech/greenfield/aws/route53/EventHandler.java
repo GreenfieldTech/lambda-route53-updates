@@ -113,7 +113,7 @@ public class EventHandler {
 	private void registerInstance(String ec2InstanceId) {
 		log("Registering " + ec2InstanceId);
 		Instance i = getInstance(ec2InstanceId);
-		ChangeResourceRecordSetsRequest req = createAddChangeRequest(i, getTTL());
+		ChangeResourceRecordSetsRequest req = createAddChangeRequest(getIPAddress(i), getHostAddress(i), getTTL());
 		if (isDebug())
 			log("Sending rr change requset: " + req);
 		Tools.waitFor(route53().changeResourceRecordSets(req));
@@ -127,22 +127,31 @@ public class EventHandler {
 	private void deregisterIsntance(String ec2InstanceId) {
 		log("Deregistering " + ec2InstanceId);
 		Instance i = getInstance(ec2InstanceId);
-		ChangeResourceRecordSetsRequest req = createRemoveChangeRequest(i, getTTL());
+		ChangeResourceRecordSetsRequest req = createRemoveChangeRequest(getIPAddress(i), getHostAddress(i), getTTL());
 		if (isDebug())
 			log("Sending rr change request: " + req);
 		Tools.waitFor(route53().changeResourceRecordSets(req));
 	}
 
+	private String getHostAddress(Instance i) {
+		String addr = isPrivate() ? i.getPrivateDnsName() : i.getPublicDnsName();
+		if (Objects.nonNull(addr) && !addr.isEmpty())
+			return addr;
+		return getIPAddress(i);
+	}
+
+	private String getIPAddress(Instance i) {
+		return isPrivate() ? i.getPrivateIpAddress() : i.getPublicIpAddress();
+	}
+
 	/**
 	 * Create a "remove record" request for the specified instance
-	 * @param i instance to create a de-registration request for
+	 * @param ip IP Address of the instance to remove from records
+	 * @param addr host name of the instance to remove from records
 	 * @param ttl TTL in seconds to use when creating a new record
 	 * @return record removal request for Route53
 	 */
-	private ChangeResourceRecordSetsRequest createRemoveChangeRequest(Instance i, long ttl) {
-		String ip = isPrivate() ? i.getPrivateIpAddress() : i.getPublicIpAddress(),
-				addr = isPrivate() ? i.getPrivateDnsName() : i.getPublicDnsName();
-				
+	private ChangeResourceRecordSetsRequest createRemoveChangeRequest(String ip, String addr, long ttl) {
 		if (Objects.isNull(ip))
 			throw new SilentFailure("Corwardly refusing to remove an instance with no IP address");
 		
@@ -172,14 +181,12 @@ public class EventHandler {
 
 	/**
 	 * Create a "add ercord" request for the specified instance
-	 * @param i instance to create a registration request for
+	 * @param ip IP address of the instance to register
+	 * @param addr host name of the instance to register
 	 * @param ttl TTL in seconds to use when creating a new record
 	 * @return record addition request for Route53
 	 */
-	private ChangeResourceRecordSetsRequest createAddChangeRequest(Instance i, long ttl) {
-		String ip = isPrivate() ? i.getPrivateIpAddress() : i.getPublicIpAddress(),
-				addr = isPrivate() ? i.getPrivateDnsName() : i.getPublicDnsName();
-		
+	private ChangeResourceRecordSetsRequest createAddChangeRequest(String ip, String addr, long ttl) {
 		if (Objects.isNull(ip))
 			throw new SilentFailure("Corwardly refusing to add an instance with no IP address");
 		
