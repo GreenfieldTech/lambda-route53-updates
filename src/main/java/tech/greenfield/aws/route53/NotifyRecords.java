@@ -1,75 +1,36 @@
 package tech.greenfield.aws.route53;
 
-import java.util.AbstractMap;
+import java.util.*;
 import java.util.AbstractMap.SimpleEntry;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import com.amazonaws.services.lambda.runtime.LambdaLogger;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.events.SNSEvent;
-import com.amazonaws.services.lambda.runtime.events.SNSEvent.SNSRecord;
 
-/**
- * Main entry point from the AWS Lambda engine, that takes an SNS event
- * @author odeda
- *
- *     Copyright (C) 2016  GreenfieldTech
- * 
- *     This library is free software; you can redistribute it and/or
- *     modify it under the terms of the GNU Lesser General Public
- *     License as published by the Free Software Foundation; either
- *     version 2.1 of the License, or (at your option) any later version.
- * 
- *     This library is distributed in the hope that it will be useful,
- *     but WITHOUT ANY WARRANTY; without even the implied warranty of
- *     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- *     Lesser General Public License for more details.
- * 
- *     You should have received a copy of the GNU Lesser General Public
- *     License along with this library; if not, write to the Free Software
- *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
- */
 public class NotifyRecords implements RequestHandler<SNSEvent, Route53UpdateResponse>{
-
+	
 	private static final long DEFAULT_TTL = 300;
-
-	/**
-	 * Main entry point
-	 */
+	private static final String MODE = System.getenv("MODE");
+	private static NotifyRecordsSqs notifyRecordsSqs= null;
+	
+	@Override
 	public Route53UpdateResponse handleRequest(SNSEvent input, Context context) {
-		try {
-			if (Objects.isNull(input)) {
-				context.getLogger().log("Invalid SNS input object");
-				return error("no SNS event input");
-			}
-			List<SNSRecord> records = input.getRecords();
-			if (Objects.isNull(records)) {
-				context.getLogger().log("No SNS events in input");
-				return error("no SNS events");
-			}
-			records.parallelStream()
-				.map(e -> EventHandler.create(context, e))
-				.forEach(EventHandler::handle);
-			context.getLogger().log("Done updating Route53");
-			return ok();
-		} catch (Throwable t) {
-			context.getLogger().log("Unexpected error while updating Route53: " + t);
-			return error(t.toString()); 
+		LambdaLogger logger = context.getLogger();
+//		switch(MODE) {
+//			case "SNS" :
+//		}
+		logger.log("Got SNS event: " + input);
+		if(MODE.equals("SNS"))
+			return new NotifyRecordsSns().handleRequest(input, context);
+		if(MODE.equals("SQS")) {
+			logger.log("enter SQS mode");
+			notifyRecordsSqs = new NotifyRecordsSqs();
+			return notifyRecordsSqs.handleRequest(input, context);
 		}
-	}
-	
-	/* ==- Helper Utilities -== */
-	
-	private Route53UpdateResponse ok() {
-		return new Route53UpdateResponse(true, "OK");
-	}
-
-	private Route53UpdateResponse error(String message) {
-		return new Route53UpdateResponse(false, "Error: " + message);
+		return null;
 	}
 
 	/**
@@ -77,7 +38,11 @@ public class NotifyRecords implements RequestHandler<SNSEvent, Route53UpdateResp
 	 * @return true if debug mode was requested by setting the DEBUG environment variable
 	 */
 	public static boolean isDebug() {
-		String debug = System.getenv("DEBUG");
+		String debug = null;
+		if(MODE.equals("SQS"))
+			debug = notifyRecordsSqs.getSqsMessage().getDEBUG();
+		if(MODE.equals("SNS"))
+			debug = System.getenv("DEBUG");
 		return Objects.nonNull(debug) && !debug.isEmpty();
 	}
 	
@@ -178,4 +143,13 @@ public class NotifyRecords implements RequestHandler<SNSEvent, Route53UpdateResp
 					"Please specify Route53 zone ID using HOSTED_ZONE_ID environment variable");
 		return var;
 	}
+	
+	protected Route53UpdateResponse ok() {
+		return new Route53UpdateResponse(true, "OK");
+	}
+
+	protected Route53UpdateResponse error(String message) {
+		return new Route53UpdateResponse(false, "Error: " + message);
+	}
+
 }
