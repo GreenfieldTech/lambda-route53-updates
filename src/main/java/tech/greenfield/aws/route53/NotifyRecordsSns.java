@@ -1,12 +1,9 @@
 package tech.greenfield.aws.route53;
 
-import java.util.*;
-import java.util.AbstractMap.SimpleEntry;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
+import java.util.List;
+import java.util.Objects;
 
 import com.amazonaws.services.lambda.runtime.Context;
-import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.events.SNSEvent;
 import com.amazonaws.services.lambda.runtime.events.SNSEvent.SNSRecord;
 
@@ -32,8 +29,6 @@ import com.amazonaws.services.lambda.runtime.events.SNSEvent.SNSRecord;
  */
 public class NotifyRecordsSns extends NotifyRecords{
 
-	private static final long DEFAULT_TTL = 300;
-	
 	public NotifyRecordsSns() {
 	}
 

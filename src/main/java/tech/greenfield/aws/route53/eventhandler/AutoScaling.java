@@ -8,7 +8,7 @@ import tech.greenfield.aws.route53.EventHandler;
 public class AutoScaling extends EventHandler {
 
 	public AutoScaling(Context context, AutoScalingNotification event) {
-		super(context, event.getType(), event.getEC2InstanceId());
+		super(context, event.getType(), event.getEC2InstanceId(), event.getAutoScalingGroupName());
 	}
 
 }

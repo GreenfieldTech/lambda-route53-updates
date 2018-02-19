@@ -1,15 +1,18 @@
 package tech.greenfield.aws.route53;
 
+import static tech.greenfield.aws.Clients.autoscaling;
 import static tech.greenfield.aws.Clients.ec2;
 import static tech.greenfield.aws.Clients.route53;
 import static tech.greenfield.aws.route53.NotifyRecords.*;
 
 import java.io.IOException;
 import java.util.AbstractMap.SimpleEntry;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
 import com.amazonaws.SdkBaseException;
+import com.amazonaws.services.autoscaling.model.DescribeAutoScalingGroupsRequest;
 import com.amazonaws.services.ec2.model.DescribeInstancesRequest;
 import com.amazonaws.services.ec2.model.Instance;
 import com.amazonaws.services.lambda.runtime.Context;
@@ -52,6 +55,7 @@ public class EventHandler {
 	private LambdaLogger logger;
 	private EventType eventType;
 	private String ec2instanceId;
+	private String autoScalingGroupName;
 	
 	static {
 		s_mapper.configure(MapperFeature.ACCEPT_CASE_INSENSITIVE_PROPERTIES, true);
@@ -69,20 +73,33 @@ public class EventHandler {
 		try {
 			ObjectNode obj = s_mapper.readValue(snsMessageText, ObjectNode.class);
 			if (obj.has("LifecycleHookName"))
-				return new LifeCycle(context, 
-						s_mapper.readValue(snsMessageText, LifeCycleNotification.class));
+				return new LifeCycle(context, s_mapper.readValue(snsMessageText, LifeCycleNotification.class));
 			else
-				return new AutoScaling(context, 
-						s_mapper.readValue(snsMessageText, AutoScalingNotification.class));
+				return new AutoScaling(context, s_mapper.readValue(snsMessageText, AutoScalingNotification.class));
 		} catch (IOException e) {
 			throw new RuntimeException("Unexpected parsing error: " + e.getMessage(),e);
 		}
 	}
 	
-	protected EventHandler(Context context, EventType eventType, String ec2InstanceId) {
+	public static EventHandler create(Context context, SqsMessage msg) {
+		Map<String, Object> sqsMessage = msg.getBody();
+		if(sqsMessage.isEmpty()) {
+			context.getLogger().log("Invalid SQS input object");
+			throw new RuntimeException("Empty SQS message body");
+		}
+		if (isDebug())
+			context.getLogger().log("Got SQS message: " + sqsMessage + "\n");
+		if (sqsMessage.containsKey("LifecycleHookName")) 
+			return new LifeCycle(context, s_mapper.convertValue(sqsMessage, LifeCycleNotification.class));
+		else
+			return new AutoScaling(context, s_mapper.convertValue(sqsMessage, AutoScalingNotification.class));
+	}
+	
+	protected EventHandler(Context context, EventType eventType, String ec2InstanceId, String autoScalingGroupName) {
 		this.logger = context.getLogger();
 		this.eventType = eventType;
 		this.ec2instanceId = ec2InstanceId;
+		this.autoScalingGroupName = autoScalingGroupName;
 	}
 
 	/**
@@ -96,9 +113,27 @@ public class EventHandler {
 				break;
 			case EC2_INSTANCE_TERMINATE:
 			case EC2_INSTANCE_TERMINATE_ERROR:
-				deregisterIsntance(ec2instanceId);
+				deregisterInstance(ec2instanceId);
 				break;
 			default: // do nothing in case of launch error or test notifcation
+			}
+		} catch(NoIpException e) {
+			try {
+				logger.log("No IP was found, starting plan B - update all instances");
+				DescribeAutoScalingGroupsRequest request = new DescribeAutoScalingGroupsRequest().withAutoScalingGroupNames(this.autoScalingGroupName);
+				List<com.amazonaws.services.autoscaling.model.Instance> instances = autoscaling().describeAutoScalingGroups(request).getAutoScalingGroups().get(0).getInstances();
+				for(com.amazonaws.services.autoscaling.model.Instance ins : instances) {
+					if(!ins.getHealthStatus().equals("Healthy"))
+						continue;
+					DescribeInstancesRequest requestEc2 = new DescribeInstancesRequest().withInstanceIds(ins.getInstanceId());
+					com.amazonaws.services.ec2.model.Instance ec2Instance = ec2().describeInstances(requestEc2).getReservations().get(0).getInstances().get(0);
+					ChangeResourceRecordSetsRequest req = createAddChangeRequest(getIPAddress(ec2Instance), getHostAddress(ec2Instance), getTTL());
+					if (isDebug())
+						log("Sending rr change requset: " + req);
+					Tools.waitFor(route53().changeResourceRecordSets(req));
+				}
+			}catch(NoIpException ex) {
+				log("Silently failing Route53 update: " + e);
 			}
 		} catch (SilentFailure | SdkBaseException e) {
 			log("Silently failing Route53 update: " + e);
@@ -110,7 +145,7 @@ public class EventHandler {
 	 * @param ec2InstanceId instance ID of instance that needs to be registered
 	 * @param ttl TTL in seconds to use when creating a new record
 	 */
-	private void registerInstance(String ec2InstanceId) {
+	private void registerInstance(String ec2InstanceId) throws NoIpException{
 		log("Registering " + ec2InstanceId);
 		Instance i = getInstance(ec2InstanceId);
 		ChangeResourceRecordSetsRequest req = createAddChangeRequest(getIPAddress(i), getHostAddress(i), getTTL());
@@ -123,8 +158,9 @@ public class EventHandler {
 	 * Start a DNS re-registration for the terminated instance
 	 * @param ec2InstanceId instance ID of instance that needs to be de-registered
 	 * @param ttl TTL in seconds to use when creating a new record
+	 * @throws NoIpException 
 	 */
-	private void deregisterIsntance(String ec2InstanceId) {
+	private void deregisterInstance(String ec2InstanceId) throws NoIpException {
 		log("Deregistering " + ec2InstanceId);
 		Instance i = getInstance(ec2InstanceId);
 		ChangeResourceRecordSetsRequest req = createRemoveChangeRequest(getIPAddress(i), getHostAddress(i), getTTL());
@@ -150,10 +186,11 @@ public class EventHandler {
 	 * @param addr host name of the instance to remove from records
 	 * @param ttl TTL in seconds to use when creating a new record
 	 * @return record removal request for Route53
+	 * @throws NoIpException 
 	 */
-	private ChangeResourceRecordSetsRequest createRemoveChangeRequest(String ip, String addr, long ttl) {
+	private ChangeResourceRecordSetsRequest createRemoveChangeRequest(String ip, String addr, long ttl) throws NoIpException {
 		if (Objects.isNull(ip))
-			throw new SilentFailure("Corwardly refusing to remove an instance with no IP address");
+			throw new NoIpException("Cowardly refusing to remove an instance with no IP address");
 		
 		if (isDebug())
 			log("Removing instance with addresses: " + ip + ", " + addr);
@@ -185,10 +222,11 @@ public class EventHandler {
 	 * @param addr host name of the instance to register
 	 * @param ttl TTL in seconds to use when creating a new record
 	 * @return record addition request for Route53
+	 * @throws NoIpException 
 	 */
-	private ChangeResourceRecordSetsRequest createAddChangeRequest(String ip, String addr, long ttl) {
+	private ChangeResourceRecordSetsRequest createAddChangeRequest(String ip, String addr, long ttl) throws NoIpException {
 		if (Objects.isNull(ip))
-			throw new SilentFailure("Corwardly refusing to add an instance with no IP address");
+			throw new NoIpException("Cowardly refusing to add an instance with no IP address");
 		
 		if (isDebug())
 			log("Adding instance with addresses: " + ip + ", " + addr);

@@ -13,7 +13,7 @@ public class LifeCycle extends EventHandler {
 	private LifeCycleNotification event;
 
 	public LifeCycle(Context context, LifeCycleNotification event) {
-		super(context, event.getType(), event.getEC2InstanceId());
+		super(context, event.getType(), event.getEC2InstanceId(), event.getAutoScalingGroupName());
 		this.event = event;
 	}
 

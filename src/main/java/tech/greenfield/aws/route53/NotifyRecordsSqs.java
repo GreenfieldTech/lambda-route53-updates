@@ -8,9 +8,6 @@ import java.util.*;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
-import org.json.JSONException;
-import org.json.JSONObject;
-
 import com.amazonaws.services.ec2.AmazonEC2ClientBuilder;
 import com.amazonaws.services.ec2.model.DescribeTagsRequest;
 import com.amazonaws.services.ec2.model.Filter;
@@ -37,6 +34,7 @@ public class NotifyRecordsSqs extends NotifyRecords{
 			List<Message> messages = new ArrayList<>();
 			while(true) {
 				messages = getMessages();
+				logger.info("Messages from queue: " + messages);
 				if(!messages.isEmpty())
 					break;
 				Thread.sleep(50);
@@ -44,15 +42,33 @@ public class NotifyRecordsSqs extends NotifyRecords{
 			for (Message message : messages) {
 				sqsMessage = new SqsMessage(message); 
 				logger.info("Handling message: " + sqsMessage.getBody());
-				JSONObject body = new JSONObject(sqsMessage.getBody());
-				deleteMessage(sqsMessage.getMessage());
-				logger.info("Deleted message: " + body);
+				handleMessage(sqsMessage, context);
+				logger.info("Done handling message. Deleting message from queue.");
+				deleteMessage(sqsMessage);
+				logger.info("Deleted message");
 			}
-		} catch (JSONException | InterruptedException | IOException e) {
-			// TODO Auto-generated catch block
+		} catch (InterruptedException | IOException e) {
 			e.printStackTrace();
+			logger.warning("Couldn't get/handle sqs messages");
+			return error(e.getMessage()); 
 		}
 		return ok();
+	}
+	
+	public Route53UpdateResponse handleMessage(SqsMessage input, Context context) {
+		try {
+			if (Objects.isNull(input.getMessage())) {
+				context.getLogger().log("Invalid SQS message object");
+				return error("no SQS message");
+			}
+			EventHandler.create(context, input).handle();
+			context.getLogger().log("Done updating Route53");
+			return ok();
+		} catch (Throwable t) {
+			t.printStackTrace();
+			context.getLogger().log("Unexpected error while updating Route53: " + t);
+			return error(t.toString()); 
+		}
 	}
 	
 	public SqsMessage getSqsMessage() {
@@ -63,8 +79,8 @@ public class NotifyRecordsSqs extends NotifyRecords{
 		return AmazonSQSClientBuilder.defaultClient().receiveMessage(new ReceiveMessageRequest(getQueueUrl())).getMessages();
 	}
 
-	public DeleteMessageResult deleteMessage(Message message) throws IOException {
-		return AmazonSQSClientBuilder.defaultClient().deleteMessage(new DeleteMessageRequest(getQueueUrl(), message.getReceiptHandle()));
+	public DeleteMessageResult deleteMessage(SqsMessage message) throws IOException {
+		return AmazonSQSClientBuilder.defaultClient().deleteMessage(new DeleteMessageRequest(getQueueUrl(), message.getMessage().getReceiptHandle()));
 	}
 
 	private String getQueueUrl() throws IOException {

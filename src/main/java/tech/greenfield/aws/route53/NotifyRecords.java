@@ -2,6 +2,8 @@ package tech.greenfield.aws.route53;
 
 import java.util.*;
 import java.util.AbstractMap.SimpleEntry;
+import java.util.logging.Logger;
+
 import com.amazonaws.services.lambda.runtime.LambdaLogger;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -15,19 +17,18 @@ public class NotifyRecords implements RequestHandler<SNSEvent, Route53UpdateResp
 	private static final long DEFAULT_TTL = 300;
 	private static final String MODE = System.getenv("MODE");
 	private static NotifyRecordsSqs notifyRecordsSqs= null;
+	private final static Logger logger = Logger.getLogger(NotifyRecordsSqs.class.getName());
 	
 	@Override
 	public Route53UpdateResponse handleRequest(SNSEvent input, Context context) {
 		LambdaLogger logger = context.getLogger();
-//		switch(MODE) {
-//			case "SNS" :
-//		}
 		logger.log("Got SNS event: " + input);
 		if(MODE.equals("SNS"))
 			return new NotifyRecordsSns().handleRequest(input, context);
 		if(MODE.equals("SQS")) {
 			logger.log("enter SQS mode");
 			notifyRecordsSqs = new NotifyRecordsSqs();
+			
 			return notifyRecordsSqs.handleRequest(input, context);
 		}
 		return null;
@@ -38,12 +39,7 @@ public class NotifyRecords implements RequestHandler<SNSEvent, Route53UpdateResp
 	 * @return true if debug mode was requested by setting the DEBUG environment variable
 	 */
 	public static boolean isDebug() {
-		String debug = null;
-		if(MODE.equals("SQS"))
-			debug = notifyRecordsSqs.getSqsMessage().getDEBUG();
-		if(MODE.equals("SNS"))
-			debug = System.getenv("DEBUG");
-		return Objects.nonNull(debug) && !debug.isEmpty();
+		return Objects.nonNull(System.getenv("DEBUG")) && !System.getenv("DEBUG").isEmpty();
 	}
 	
 	public static long getTTL() {
@@ -77,7 +73,13 @@ public class NotifyRecords implements RequestHandler<SNSEvent, Route53UpdateResp
 	 * @return list of SRV_RECORD configurations
 	 */
 	public static List<String> getSRVConfiguration() {
-		return getEnvByPrefix("SRV_RECORD");
+		List<String> SRVConfiguration = new ArrayList<>();
+		if(MODE.equals("SQS"))
+			SRVConfiguration.add(notifyRecordsSqs.getSqsMessage().getSRV_RECORD());
+		if(Objects.isNull(SRVConfiguration))
+			SRVConfiguration = getEnvByPrefix("SRV_RECORD");
+		logger.info("SRVConfiguration: " + SRVConfiguration + " (with mode " + MODE + ")");
+		return SRVConfiguration;
 	}
 	
 	/**
@@ -85,7 +87,13 @@ public class NotifyRecords implements RequestHandler<SNSEvent, Route53UpdateResp
 	 * @return list of DNSRR_RECORD configurations
 	 */
 	public static List<String> getDNSRRConfiguration() {
-		return getEnvByPrefix("DNSRR_RECORD");
+		List<String> DNSRRConfiguration = new ArrayList<>();
+		if(MODE.equals("SQS"))
+			DNSRRConfiguration.add(notifyRecordsSqs.getSqsMessage().getDNSRR_RECORD());
+		if(Objects.isNull(DNSRRConfiguration))
+			DNSRRConfiguration = getEnvByPrefix("DNSRR_RECORD");
+		logger.info("DNSRRConfiguration: " + DNSRRConfiguration + " (with mode " + MODE + ")");
+		return DNSRRConfiguration;
 	}
 	
 	/**
