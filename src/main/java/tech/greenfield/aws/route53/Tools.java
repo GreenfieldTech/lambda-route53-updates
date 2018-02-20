@@ -2,10 +2,9 @@ package tech.greenfield.aws.route53;
 
 import static tech.greenfield.aws.Clients.route53;
 
-import java.util.HashSet;
-import java.util.Objects;
-import java.util.Map;
+import java.util.*;
 import java.util.function.Predicate;
+import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -43,6 +42,7 @@ import com.amazonaws.services.route53.model.ResourceRecordSet;
  */
 public class Tools {
 	private static final long WAIT_PULSE = 250;
+	private final static Logger logger = Logger.getLogger(Tools.class.getName());
 
 	/**
 	 * Wait until the specified change request has been applied on Route53 servers
@@ -119,6 +119,25 @@ public class Tools {
 			rr.setResourceRecords(uniqRRs);
 			return new ResourceRecordSetChange(origrr, rr);
 		}));
+	}
+	
+	public static ChangeResourceRecordSetsRequest createRecordSet(Stream<Map.Entry<String, List<String>>> mappings, RRType rtype, long ttl) {
+		List<Change> changes = new ArrayList<Change>();
+		mappings.forEach(entry -> {
+			changes.add(new Change(ChangeAction.DELETE, getRecordSet(entry.getKey(), rtype, ttl)));
+			logger.info("Name to update: " + entry.getKey());
+			logger.info("Existing instances to update: " + Arrays.toString(entry.getValue().toArray()));
+			ResourceRecordSet resourceRecordSet = new ResourceRecordSet(entry.getKey(), rtype);
+			resourceRecordSet.setTTL(ttl);
+			List<ResourceRecord> resourceRecords = new ArrayList<>();
+			entry.getValue().forEach(ip -> {
+				resourceRecords.add(new ResourceRecord(ip)); 
+			});
+			resourceRecordSet.setResourceRecords(resourceRecords);
+			changes.add(new Change(ChangeAction.CREATE, resourceRecordSet));
+//			new ResourceRecordSetChange(getRecordSet(entry.getKey(), rtype, ttl), resourceRecordSet);
+		});
+		return new ChangeResourceRecordSetsRequest(NotifyRecords.getHostedZoneId(), new ChangeBatch(changes));	
 	}
 
 	/**

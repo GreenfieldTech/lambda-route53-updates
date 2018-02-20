@@ -6,10 +6,11 @@ import static tech.greenfield.aws.Clients.route53;
 import static tech.greenfield.aws.route53.NotifyRecords.*;
 
 import java.io.IOException;
+import java.util.*;
 import java.util.AbstractMap.SimpleEntry;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.Map.Entry;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import com.amazonaws.SdkBaseException;
 import com.amazonaws.services.autoscaling.model.DescribeAutoScalingGroupsRequest;
@@ -118,26 +119,31 @@ public class EventHandler {
 			default: // do nothing in case of launch error or test notifcation
 			}
 		} catch(NoIpException e) {
-			try {
-				logger.log("No IP was found, starting plan B - update all instances");
-				DescribeAutoScalingGroupsRequest request = new DescribeAutoScalingGroupsRequest().withAutoScalingGroupNames(this.autoScalingGroupName);
-				List<com.amazonaws.services.autoscaling.model.Instance> instances = autoscaling().describeAutoScalingGroups(request).getAutoScalingGroups().get(0).getInstances();
-				for(com.amazonaws.services.autoscaling.model.Instance ins : instances) {
-					if(!ins.getHealthStatus().equals("Healthy"))
-						continue;
-					DescribeInstancesRequest requestEc2 = new DescribeInstancesRequest().withInstanceIds(ins.getInstanceId());
-					com.amazonaws.services.ec2.model.Instance ec2Instance = ec2().describeInstances(requestEc2).getReservations().get(0).getInstances().get(0);
-					ChangeResourceRecordSetsRequest req = createAddChangeRequest(getIPAddress(ec2Instance), getHostAddress(ec2Instance), getTTL());
-					if (isDebug())
-						log("Sending rr change requset: " + req);
-					Tools.waitFor(route53().changeResourceRecordSets(req));
-				}
-			}catch(NoIpException ex) {
-				log("Silently failing Route53 update: " + e);
-			}
+			logger.log("No IP was found, starting plan B - update all instances");
+			DescribeAutoScalingGroupsRequest request = new DescribeAutoScalingGroupsRequest().withAutoScalingGroupNames(this.autoScalingGroupName);
+			List<com.amazonaws.services.autoscaling.model.Instance> instances = autoscaling().describeAutoScalingGroups(request).getAutoScalingGroups().get(0).getInstances();
+			Entry<String, List<String>> instancesToUpdate = getEc2InstancesFromAsgInstances(instances);
+			ChangeResourceRecordSetsRequest req = createChangeRequest(instancesToUpdate.getValue(), instancesToUpdate.getKey(), getTTL());
+			if (isDebug())
+				log("Sending rr change request: " + req);
+			Tools.waitFor(route53().changeResourceRecordSets(req));
 		} catch (SilentFailure | SdkBaseException e) {
 			log("Silently failing Route53 update: " + e);
 		}
+	}
+
+	private Map.Entry<String,List<String>> getEc2InstancesFromAsgInstances(List<com.amazonaws.services.autoscaling.model.Instance> instances) {
+		List<String> instancesToUpdate = new ArrayList<>();
+		String host = null;
+		for(com.amazonaws.services.autoscaling.model.Instance ins : instances) {
+			if(!ins.getHealthStatus().equals("Healthy"))
+				continue;
+			DescribeInstancesRequest requestEc2 = new DescribeInstancesRequest().withInstanceIds(ins.getInstanceId());
+			com.amazonaws.services.ec2.model.Instance ec2Instance = ec2().describeInstances(requestEc2).getReservations().get(0).getInstances().get(0);
+			instancesToUpdate.add(getIPAddress(ec2Instance));
+			host = getHostAddress(ec2Instance);
+		}
+		return new AbstractMap.SimpleEntry<String,List<String>>(host, instancesToUpdate);
 	}
 
 	/**
@@ -150,7 +156,7 @@ public class EventHandler {
 		Instance i = getInstance(ec2InstanceId);
 		ChangeResourceRecordSetsRequest req = createAddChangeRequest(getIPAddress(i), getHostAddress(i), getTTL());
 		if (isDebug())
-			log("Sending rr change requset: " + req);
+			log("Sending rr change request: " + req);
 		Tools.waitFor(route53().changeResourceRecordSets(req));
 	}
 	
@@ -217,7 +223,7 @@ public class EventHandler {
 	}
 
 	/**
-	 * Create a "add ercord" request for the specified instance
+	 * Create a "add record" request for the specified instance
 	 * @param ip IP address of the instance to register
 	 * @param addr host name of the instance to register
 	 * @param ttl TTL in seconds to use when creating a new record
@@ -233,7 +239,7 @@ public class EventHandler {
 		
 		ChangeResourceRecordSetsRequest req = null;
 		if (useDNSRR())
-			req = Tools.getAndAddRecord(getDNSRRConfiguration().stream().map(hostname -> new SimpleEntry<>(hostname, ip)), RRType.A, ttl);
+			req = Tools.getAndAddRecord(getDNSRRConfiguration().stream().map(name -> new SimpleEntry<>(name, ip)), RRType.A, ttl);
 		
 		if (useSRV()) {
 			Map<String, String> records = getSRVEntries(addr);
@@ -250,6 +256,38 @@ public class EventHandler {
 		if (Objects.isNull(req))
 			throw new UnsupportedOperationException(
 					"Please specify either DNSRR_RECORD or SRV_RECORD");
+		return req;
+	}
+	
+	private ChangeResourceRecordSetsRequest createChangeRequest(List<String> instances, String addr, long ttl) {
+//		if (Objects.isNull(ip))
+//			throw new SilentFailure("Cowardly refusing to add an instance with no IP address");
+//		if (isDebug())
+//			log("Adding instance with addresses: " + ip + ", " + addr);
+		
+		ChangeResourceRecordSetsRequest req = null;
+		if (useDNSRR())
+			req = Tools.createRecordSet(getDNSRRConfiguration().stream().map(hostname -> new SimpleEntry<>(hostname, instances)), RRType.A, ttl);
+		
+		if (useSRV()) {
+			List<Map.Entry<String, List<String>>> rrsList = new ArrayList<>();
+			getSRVConfiguration().forEach(conf -> {
+				String[] parts = conf.split(":");
+				List<String> x = instances.stream().map(ip -> Stream.of(parts[0], parts[1], parts[2], ip).collect(Collectors.joining(" "))).collect(Collectors.toList());
+				rrsList.add(new AbstractMap.SimpleEntry<String,List<String>>(parts[3], x));
+			});
+			ChangeResourceRecordSetsRequest srvReq = Tools.createRecordSet(rrsList.stream(), RRType.SRV, ttl);
+			if (Objects.isNull(req))
+				req = srvReq;
+			else {
+				// already have a DNS RR change batch in queue, just add our changes
+				ChangeBatch b = req.getChangeBatch();
+				srvReq.getChangeBatch().getChanges().forEach(b::withChanges);
+			}
+		}
+		
+		if (Objects.isNull(req))
+			throw new UnsupportedOperationException("Please specify either DNSRR_RECORD or SRV_RECORD");
 		return req;
 	}
 	

@@ -116,16 +116,11 @@ public class NotifyRecords implements RequestHandler<SNSEvent, Route53UpdateResp
 	public static Map<String,String> getSRVEntries(String hostname) {
 		return getSRVConfiguration().stream().map(var -> {
 			if (Objects.isNull(var) || var.isEmpty())
-				throw new UnsupportedOperationException(
-						"Cannot construct SRV record without SRV_RECORD environment variable");
+				throw new UnsupportedOperationException("Cannot construct SRV record without SRV_RECORD environment variable");
 			String[] parts = var.split(":");
 			if (parts.length != 4)
-				throw new UnsupportedOperationException("Invalid SRV_RECORD format - " +
-						"must conform to format '<priority>:<weight>:<port>:<name>'");
-			return new AbstractMap.SimpleEntry<String,String>(
-					parts[3],
-					Stream.of(parts[0], parts[1],parts[2],hostname)
-						.collect(Collectors.joining(" ")));
+				throw new UnsupportedOperationException("Invalid SRV_RECORD format - " + "must conform to format '<priority>:<weight>:<port>:<name>'");
+			return new AbstractMap.SimpleEntry<String,String>(parts[3], Stream.of(parts[0], parts[1],parts[2],hostname).collect(Collectors.joining(" ")));
 		}).collect(Collectors.toMap(SimpleEntry::getKey, SimpleEntry::getValue));
 	}
 	
