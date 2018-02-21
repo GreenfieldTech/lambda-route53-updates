@@ -12,16 +12,17 @@ import com.amazonaws.services.ec2.AmazonEC2ClientBuilder;
 import com.amazonaws.services.ec2.model.DescribeTagsRequest;
 import com.amazonaws.services.ec2.model.Filter;
 import com.amazonaws.services.lambda.runtime.Context;
+import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.events.SNSEvent;
 import com.amazonaws.services.sqs.AmazonSQSClientBuilder;
 import com.amazonaws.services.sqs.model.*;
 
 
-public class NotifyRecordsSqs extends NotifyRecords{
+public class NotifyRecordsSqs implements RequestHandler<SNSEvent, Route53UpdateResponse>{
 
 	private final static Logger logger = Logger.getLogger(NotifyRecordsSqs.class.getName());
 	private static String queueUrl = null;
-	private SqsMessage sqsMessage;
+	private Route53Message sqsMessage;
 	
 	public NotifyRecordsSqs() {
 
@@ -40,38 +41,37 @@ public class NotifyRecordsSqs extends NotifyRecords{
 				Thread.sleep(50);
 			}
 			for (Message message : messages) {
-				sqsMessage = new SqsMessage(message); 
+				sqsMessage = new Route53Message(message); 
 				logger.info("Handling message: " + sqsMessage.getBody());
 				handleMessage(sqsMessage, context);
-				logger.info("Done handling message. Deleting message from queue.");
 				deleteMessage(sqsMessage);
 				logger.info("Deleted message");
 			}
 		} catch (InterruptedException | IOException e) {
 			e.printStackTrace();
 			logger.warning("Couldn't get/handle sqs messages");
-			return error(e.getMessage()); 
+			return Response.error(e.getMessage()); 
 		}
-		return ok();
+		return Response.ok();
 	}
 	
-	public Route53UpdateResponse handleMessage(SqsMessage input, Context context) {
+	public Route53UpdateResponse handleMessage(Route53Message input, Context context) {
 		try {
 			if (Objects.isNull(input.getMessage())) {
 				context.getLogger().log("Invalid SQS message object");
-				return error("no SQS message");
+				return Response.error("no SQS message");
 			}
 			EventHandler.create(context, input).handle();
 			context.getLogger().log("Done updating Route53");
-			return ok();
+			return Response.ok();
 		} catch (Throwable t) {
 			t.printStackTrace();
 			context.getLogger().log("Unexpected error while updating Route53: " + t);
-			return error(t.toString()); 
+			return Response.error(t.toString()); 
 		}
 	}
 	
-	public SqsMessage getSqsMessage() {
+	public Route53Message getSqsMessage() {
 		return sqsMessage;
 	}
 	
@@ -79,7 +79,7 @@ public class NotifyRecordsSqs extends NotifyRecords{
 		return AmazonSQSClientBuilder.defaultClient().receiveMessage(new ReceiveMessageRequest(getQueueUrl())).getMessages();
 	}
 
-	public DeleteMessageResult deleteMessage(SqsMessage message) throws IOException {
+	public DeleteMessageResult deleteMessage(Route53Message message) throws IOException {
 		return AmazonSQSClientBuilder.defaultClient().deleteMessage(new DeleteMessageRequest(getQueueUrl(), message.getMessage().getReceiptHandle()));
 	}
 
@@ -130,17 +130,6 @@ public class NotifyRecordsSqs extends NotifyRecords{
 			}
 		}
 		return obj.toString();
-	}
-
-	private String getIP() throws IOException {
-		if(Objects.nonNull(System.getenv("MY_IP")))
-			return System.getenv("MY_IP");
-		try {
-			return getResult(new URL("http://169.254.169.254/latest/meta-data/local-ipv4").getContent());
-		} catch (MalformedURLException e) {
-			e.printStackTrace();
-			throw new IOException(e);
-		}
 	}
 
 }

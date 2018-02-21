@@ -62,7 +62,7 @@ public class Tools {
 
 	/**
 	 * Retrieve a single record set with the specified name and type.
-	 * This method relies on {@link NotifyRecords#getHostedZoneId()} which
+	 * This method relies on {@link Response#getHostedZoneId()} which
 	 * requires setting the environment variable HOSTED_ZONE_ID
 	 * @param hostname FQDN of record set to retrieve
 	 * @param type RR type of record to retrieve
@@ -74,7 +74,7 @@ public class Tools {
 			hostname = hostname + ".";
 		final String domainname = hostname;
 		ListResourceRecordSetsRequest req = new ListResourceRecordSetsRequest()
-				.withHostedZoneId(NotifyRecords.getHostedZoneId())
+				.withHostedZoneId(Route53Message.getHostedZoneId())
 				.withStartRecordName(hostname)
 				.withStartRecordType(type)
 				.withMaxItems("1");
@@ -137,7 +137,7 @@ public class Tools {
 			changes.add(new Change(ChangeAction.CREATE, resourceRecordSet));
 //			new ResourceRecordSetChange(getRecordSet(entry.getKey(), rtype, ttl), resourceRecordSet);
 		});
-		return new ChangeResourceRecordSetsRequest(NotifyRecords.getHostedZoneId(), new ChangeBatch(changes));	
+		return new ChangeResourceRecordSetsRequest(Route53Message.getHostedZoneId(), new ChangeBatch(changes));	
 	}
 
 	/**
@@ -160,13 +160,13 @@ public class Tools {
 
 	/**
 	 * Create an UPSERT {@link ChangeResourceRecordSetsRequest} from a resource record set
-	 * This method relies on {@link NotifyRecords#getHostedZoneId()} which
+	 * This method relies on {@link Response#getHostedZoneId()} which
 	 * requires setting the environment variable HOSTED_ZONE_ID
 	 * @param rrsets resource record set to "upsert"
 	 * @return Change resource record set request to submit to Route53
 	 */
 	private static ChangeResourceRecordSetsRequest rrsetsToChange(Stream<ResourceRecordSetChange> rrsets) {
-		return new ChangeResourceRecordSetsRequest(NotifyRecords.getHostedZoneId(),
+		return new ChangeResourceRecordSetsRequest(Route53Message.getHostedZoneId(),
 				new ChangeBatch(rrsets.map(rr -> rr.removedAll() ? 
 						new Change(ChangeAction.DELETE, rr.oldRRS()) : 
 							new Change(ChangeAction.UPSERT, rr.newRRS())).collect(Collectors.toList())));

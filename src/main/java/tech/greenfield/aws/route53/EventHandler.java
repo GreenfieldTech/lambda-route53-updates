@@ -3,9 +3,7 @@ package tech.greenfield.aws.route53;
 import static tech.greenfield.aws.Clients.autoscaling;
 import static tech.greenfield.aws.Clients.ec2;
 import static tech.greenfield.aws.Clients.route53;
-import static tech.greenfield.aws.route53.NotifyRecords.*;
 
-import java.io.IOException;
 import java.util.*;
 import java.util.AbstractMap.SimpleEntry;
 import java.util.Map.Entry;
@@ -18,13 +16,11 @@ import com.amazonaws.services.ec2.model.DescribeInstancesRequest;
 import com.amazonaws.services.ec2.model.Instance;
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.LambdaLogger;
-import com.amazonaws.services.lambda.runtime.events.SNSEvent.SNSRecord;
 import com.amazonaws.services.route53.model.ChangeBatch;
 import com.amazonaws.services.route53.model.ChangeResourceRecordSetsRequest;
 import com.amazonaws.services.route53.model.RRType;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import tech.greenfield.aws.route53.eventhandler.AutoScaling;
 import tech.greenfield.aws.route53.eventhandler.LifeCycle;
@@ -57,6 +53,7 @@ public class EventHandler {
 	private EventType eventType;
 	private String ec2instanceId;
 	private String autoScalingGroupName;
+	private Route53Message message;
 	
 	static {
 		s_mapper.configure(MapperFeature.ACCEPT_CASE_INSENSITIVE_PROPERTIES, true);
@@ -65,42 +62,39 @@ public class EventHandler {
 	/**
 	 * Constructor to parse the SNS message and perform additional initialization
 	 * @param context Call context from engine
-	 * @param event SNS event to process
+	 * @param msg SNS event to process
 	 */
-	public static EventHandler create(Context context, SNSRecord event) {
-		String snsMessageText = event.getSNS().getMessage();
-		if (isDebug())
-			context.getLogger().log("Got SNS message: " + snsMessageText + "\n");
-		try {
-			ObjectNode obj = s_mapper.readValue(snsMessageText, ObjectNode.class);
-			if (obj.has("LifecycleHookName"))
-				return new LifeCycle(context, s_mapper.readValue(snsMessageText, LifeCycleNotification.class));
-			else
-				return new AutoScaling(context, s_mapper.readValue(snsMessageText, AutoScalingNotification.class));
-		} catch (IOException e) {
-			throw new RuntimeException("Unexpected parsing error: " + e.getMessage(),e);
-		}
-	}
+//	public static EventHandler create(Context context, Route53Message msg) {
+//		String snsMessageText = msg.getSNS().getMessage();
+//		if (msg.isDebug())
+//			context.getLogger().log("Got SNS message: " + snsMessageText + "\n");
+//		try {
+//			ObjectNode obj = s_mapper.readValue(snsMessageText, ObjectNode.class);
+//			if (obj.has("LifecycleHookName"))
+//				return new LifeCycle(context, s_mapper.readValue(snsMessageText, LifeCycleNotification.class), msg);
+//			else
+//				return new AutoScaling(context, s_mapper.readValue(snsMessageText, AutoScalingNotification.class), msg);
+//		} catch (IOException e) {
+//			throw new RuntimeException("Unexpected parsing error: " + e.getMessage(),e);
+//		}
+//	}
 	
-	public static EventHandler create(Context context, SqsMessage msg) {
-		Map<String, Object> sqsMessage = msg.getBody();
-		if(sqsMessage.isEmpty()) {
-			context.getLogger().log("Invalid SQS input object");
-			throw new RuntimeException("Empty SQS message body");
-		}
-		if (isDebug())
-			context.getLogger().log("Got SQS message: " + sqsMessage + "\n");
-		if (sqsMessage.containsKey("LifecycleHookName")) 
-			return new LifeCycle(context, s_mapper.convertValue(sqsMessage, LifeCycleNotification.class));
+	public static EventHandler create(Context context, Route53Message msg) {
+		Map<String, Object> messageBody = msg.getBody();
+		if (Route53Message.isDebug())
+			context.getLogger().log("Got message: " + messageBody + "\n");
+		if (messageBody.containsKey("LifecycleHookName")) 
+			return new LifeCycle(context, s_mapper.convertValue(messageBody, LifeCycleNotification.class), msg);
 		else
-			return new AutoScaling(context, s_mapper.convertValue(sqsMessage, AutoScalingNotification.class));
+			return new AutoScaling(context, s_mapper.convertValue(messageBody, AutoScalingNotification.class), msg);
 	}
 	
-	protected EventHandler(Context context, EventType eventType, String ec2InstanceId, String autoScalingGroupName) {
+	protected EventHandler(Context context, EventType eventType, String ec2InstanceId, String autoScalingGroupName, Route53Message message) {
 		this.logger = context.getLogger();
 		this.eventType = eventType;
 		this.ec2instanceId = ec2InstanceId;
 		this.autoScalingGroupName = autoScalingGroupName;
+		this.message = message;
 	}
 
 	/**
@@ -123,8 +117,8 @@ public class EventHandler {
 			DescribeAutoScalingGroupsRequest request = new DescribeAutoScalingGroupsRequest().withAutoScalingGroupNames(this.autoScalingGroupName);
 			List<com.amazonaws.services.autoscaling.model.Instance> instances = autoscaling().describeAutoScalingGroups(request).getAutoScalingGroups().get(0).getInstances();
 			Entry<String, List<String>> instancesToUpdate = getEc2InstancesFromAsgInstances(instances);
-			ChangeResourceRecordSetsRequest req = createChangeRequest(instancesToUpdate.getValue(), instancesToUpdate.getKey(), getTTL());
-			if (isDebug())
+			ChangeResourceRecordSetsRequest req = createChangeRequest(instancesToUpdate.getValue(), instancesToUpdate.getKey(), Route53Message.getTTL());
+			if (Route53Message.isDebug())
 				log("Sending rr change request: " + req);
 			Tools.waitFor(route53().changeResourceRecordSets(req));
 		} catch (SilentFailure | SdkBaseException e) {
@@ -154,8 +148,8 @@ public class EventHandler {
 	private void registerInstance(String ec2InstanceId) throws NoIpException{
 		log("Registering " + ec2InstanceId);
 		Instance i = getInstance(ec2InstanceId);
-		ChangeResourceRecordSetsRequest req = createAddChangeRequest(getIPAddress(i), getHostAddress(i), getTTL());
-		if (isDebug())
+		ChangeResourceRecordSetsRequest req = createAddChangeRequest(getIPAddress(i), getHostAddress(i), Route53Message.getTTL());
+		if (Route53Message.isDebug())
 			log("Sending rr change request: " + req);
 		Tools.waitFor(route53().changeResourceRecordSets(req));
 	}
@@ -169,21 +163,21 @@ public class EventHandler {
 	private void deregisterInstance(String ec2InstanceId) throws NoIpException {
 		log("Deregistering " + ec2InstanceId);
 		Instance i = getInstance(ec2InstanceId);
-		ChangeResourceRecordSetsRequest req = createRemoveChangeRequest(getIPAddress(i), getHostAddress(i), getTTL());
-		if (isDebug())
+		ChangeResourceRecordSetsRequest req = createRemoveChangeRequest(getIPAddress(i), getHostAddress(i), Route53Message.getTTL());
+		if (Route53Message.isDebug())
 			log("Sending rr change request: " + req);
 		Tools.waitFor(route53().changeResourceRecordSets(req));
 	}
 
 	private String getHostAddress(Instance i) {
-		String addr = isPrivate() ? i.getPrivateDnsName() : i.getPublicDnsName();
+		String addr = Route53Message.isPrivate() ? i.getPrivateDnsName() : i.getPublicDnsName();
 		if (Objects.nonNull(addr) && !addr.isEmpty())
 			return addr;
 		return getIPAddress(i);
 	}
 
 	private String getIPAddress(Instance i) {
-		return isPrivate() ? i.getPrivateIpAddress() : i.getPublicIpAddress();
+		return Route53Message.isPrivate() ? i.getPrivateIpAddress() : i.getPublicIpAddress();
 	}
 
 	/**
@@ -198,15 +192,15 @@ public class EventHandler {
 		if (Objects.isNull(ip))
 			throw new NoIpException("Cowardly refusing to remove an instance with no IP address");
 		
-		if (isDebug())
+		if (Route53Message.isDebug())
 			log("Removing instance with addresses: " + ip + ", " + addr);
 
 		ChangeResourceRecordSetsRequest req = null;
-		if (useDNSRR())
-			req = Tools.getAndRemoveRecord(getDNSRRConfiguration().stream().map(hostname -> new SimpleEntry<>(hostname, ip)), RRType.A, ttl);
+		if (message.useDNSRR())
+			req = Tools.getAndRemoveRecord(message.getDNSRR_RECORD().stream().map(hostname -> new SimpleEntry<>(hostname, ip)), RRType.A, ttl);
 		
-		if (useSRV()) {
-			ChangeResourceRecordSetsRequest srvReq = Tools.getAndRemoveRecord(getSRVEntries(addr).entrySet().stream(), RRType.SRV, ttl);
+		if (message.useSRV()) {
+			ChangeResourceRecordSetsRequest srvReq = Tools.getAndRemoveRecord(message.getSRVEntries(addr).entrySet().stream(), RRType.SRV, ttl);
 			if (Objects.isNull(req))
 				req = srvReq;
 			else {
@@ -234,15 +228,15 @@ public class EventHandler {
 		if (Objects.isNull(ip))
 			throw new NoIpException("Cowardly refusing to add an instance with no IP address");
 		
-		if (isDebug())
+		if (Route53Message.isDebug())
 			log("Adding instance with addresses: " + ip + ", " + addr);
 		
 		ChangeResourceRecordSetsRequest req = null;
-		if (useDNSRR())
-			req = Tools.getAndAddRecord(getDNSRRConfiguration().stream().map(name -> new SimpleEntry<>(name, ip)), RRType.A, ttl);
+		if (message.useDNSRR())
+			req = Tools.getAndAddRecord(message.getDNSRR_RECORD().stream().map(name -> new SimpleEntry<>(name, ip)), RRType.A, ttl);
 		
-		if (useSRV()) {
-			Map<String, String> records = getSRVEntries(addr);
+		if (message.useSRV()) {
+			Map<String, String> records = message.getSRVEntries(addr);
 			ChangeResourceRecordSetsRequest srvReq = Tools.getAndAddRecord(records.entrySet().stream(), RRType.SRV, ttl);
 			if (Objects.isNull(req))
 				req = srvReq;
@@ -266,12 +260,12 @@ public class EventHandler {
 //			log("Adding instance with addresses: " + ip + ", " + addr);
 		
 		ChangeResourceRecordSetsRequest req = null;
-		if (useDNSRR())
-			req = Tools.createRecordSet(getDNSRRConfiguration().stream().map(hostname -> new SimpleEntry<>(hostname, instances)), RRType.A, ttl);
+		if (message.useDNSRR())
+			req = Tools.createRecordSet(message.getDNSRR_RECORD().stream().map(hostname -> new SimpleEntry<>(hostname, instances)), RRType.A, ttl);
 		
-		if (useSRV()) {
+		if (message.useSRV()) {
 			List<Map.Entry<String, List<String>>> rrsList = new ArrayList<>();
-			getSRVConfiguration().forEach(conf -> {
+			message.getSRV_RECORD().forEach(conf -> {
 				String[] parts = conf.split(":");
 				List<String> x = instances.stream().map(ip -> Stream.of(parts[0], parts[1], parts[2], ip).collect(Collectors.joining(" "))).collect(Collectors.toList());
 				rrsList.add(new AbstractMap.SimpleEntry<String,List<String>>(parts[3], x));
