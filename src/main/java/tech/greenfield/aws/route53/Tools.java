@@ -125,8 +125,8 @@ public class Tools {
 		List<Change> changes = new ArrayList<Change>();
 		mappings.forEach(entry -> {
 			changes.add(new Change(ChangeAction.DELETE, getRecordSet(entry.getKey(), rtype, ttl)));
-			logger.info("Name to update: " + entry.getKey());
-			logger.info("Existing instances to update: " + Arrays.toString(entry.getValue().toArray()));
+			if (Route53Message.isDebug())
+				logger.info("Updating: " + entry.getKey() + ", with instances: " + Arrays.toString(entry.getValue().toArray()));
 			ResourceRecordSet resourceRecordSet = new ResourceRecordSet(entry.getKey(), rtype);
 			resourceRecordSet.setTTL(ttl);
 			List<ResourceRecord> resourceRecords = new ArrayList<>();

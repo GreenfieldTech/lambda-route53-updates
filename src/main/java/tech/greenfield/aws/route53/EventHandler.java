@@ -133,9 +133,13 @@ public class EventHandler {
 			if(!ins.getHealthStatus().equals("Healthy"))
 				continue;
 			DescribeInstancesRequest requestEc2 = new DescribeInstancesRequest().withInstanceIds(ins.getInstanceId());
+			if(ec2().describeInstances(requestEc2).getReservations().isEmpty() || ec2().describeInstances(requestEc2).getReservations().get(0).getInstances().isEmpty())
+				continue;
 			com.amazonaws.services.ec2.model.Instance ec2Instance = ec2().describeInstances(requestEc2).getReservations().get(0).getInstances().get(0);
-			instancesToUpdate.add(getIPAddress(ec2Instance));
-			host = getHostAddress(ec2Instance);
+			if(Objects.nonNull(getIPAddress(ec2Instance)))
+				instancesToUpdate.add(getIPAddress(ec2Instance));
+			if(instancesToUpdate.size()<2)
+				host = getHostAddress(ec2Instance);
 		}
 		return new AbstractMap.SimpleEntry<String,List<String>>(host, instancesToUpdate);
 	}
@@ -196,11 +200,14 @@ public class EventHandler {
 			log("Removing instance with addresses: " + ip + ", " + addr);
 
 		ChangeResourceRecordSetsRequest req = null;
-		if (message.useDNSRR())
+		if (message.useDNSRR()) {
 			req = Tools.getAndRemoveRecord(message.getDNSRR_RECORD().stream().map(hostname -> new SimpleEntry<>(hostname, ip)), RRType.A, ttl);
-		
+			logger.log("req: " + req);
+		}
 		if (message.useSRV()) {
+			logger.log("addr: " + addr);
 			ChangeResourceRecordSetsRequest srvReq = Tools.getAndRemoveRecord(message.getSRVEntries(addr).entrySet().stream(), RRType.SRV, ttl);
+			logger.log("srvReq: " + srvReq);
 			if (Objects.isNull(req))
 				req = srvReq;
 			else {
@@ -232,9 +239,9 @@ public class EventHandler {
 			log("Adding instance with addresses: " + ip + ", " + addr);
 		
 		ChangeResourceRecordSetsRequest req = null;
-		if (message.useDNSRR())
+		if (message.useDNSRR()) {
 			req = Tools.getAndAddRecord(message.getDNSRR_RECORD().stream().map(name -> new SimpleEntry<>(name, ip)), RRType.A, ttl);
-		
+		}
 		if (message.useSRV()) {
 			Map<String, String> records = message.getSRVEntries(addr);
 			ChangeResourceRecordSetsRequest srvReq = Tools.getAndAddRecord(records.entrySet().stream(), RRType.SRV, ttl);

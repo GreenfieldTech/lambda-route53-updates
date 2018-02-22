@@ -23,24 +23,25 @@ public class Route53Message{
 	private final static Logger logger = Logger.getLogger(NotifyRecordsSqs.class.getName());
 	private static final long DEFAULT_TTL = 300;
 
-
-	
 	static {
 		s_mapper.configure(MapperFeature.ACCEPT_CASE_INSENSITIVE_PROPERTIES, true);
 	}
 	
-	public Route53Message(Message message) {
-		this.message = message;
+	public Route53Message(Message sqs) {
+		this.message = sqs;
 		this.body = retreiveBody();
 		logger.info("SQS message body: " + body);
 		try {
+			if(Objects.isNull(body.get("NotificationMetadata")))
+				throw new IOException("No metadata was sent");
 			String metadataStr = body.get("NotificationMetadata").toString();
 			metadata = s_mapper.readValue(metadataStr, Metadata.class);
-			this.SRV_RECORD = getListFromString(metadata.getSRV_RECORD());
-			this.DNSRR_RECORD = getListFromString(metadata.getDNSRR_RECORD());
+			this.SRV_RECORD = metadata.getSRV_RECORD();
+			this.DNSRR_RECORD = metadata.getDNSRR_RECORD();
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
+		logger.info("SRV_RECORD: " + this.SRV_RECORD + ", DNSRR_RECORD: " + this.DNSRR_RECORD);
 	}
 	
 	public Route53Message(SNSRecord sns) {
@@ -51,18 +52,7 @@ public class Route53Message{
 		}
 		this.SRV_RECORD = getEnvByPrefix("SRV_RECORD");
 		this.DNSRR_RECORD = getEnvByPrefix("DNSRR_RECORD");
-	}
-	
-	private static List<String> getListFromString(String str) {
-		List<String> list = new ArrayList<>();
-		if(str.startsWith("[")) {
-			for(String item : str.substring(1, str.length()-1).split(",")) {
-				list.add(item);
-			}
-		}
-		else
-			list.add(str);
-		return list;
+		logger.info("SRV_RECORD: " + this.SRV_RECORD + " DNSRR_RECORD: " + this.DNSRR_RECORD);
 	}
 	
 	/**
@@ -127,7 +117,7 @@ public class Route53Message{
 				throw new UnsupportedOperationException("Cannot construct SRV record without SRV_RECORD environment variable");
 			String[] parts = var.split(":");
 			if (parts.length != 4)
-				throw new UnsupportedOperationException("Invalid SRV_RECORD format - " + "must conform to format '<priority>:<weight>:<port>:<name>'");
+				throw new UnsupportedOperationException("Invalid SRV_RECORD format - " + "must conform to format '<priority>:<weight>:<port>:<name>'. currently is: " + var + " of length: " + parts.length);
 			return new AbstractMap.SimpleEntry<String,String>(parts[3], Stream.of(parts[0], parts[1],parts[2],hostname).collect(Collectors.joining(" ")));
 		}).collect(Collectors.toMap(SimpleEntry::getKey, SimpleEntry::getValue));
 	}
