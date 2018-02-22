@@ -35,17 +35,20 @@ public class NotifyRecordsSqs implements RequestHandler<SNSEvent, Route53UpdateR
 			List<Message> messages = new ArrayList<>();
 			while(true) {
 				messages = getMessages();
-				logger.info("Messages from queue: " + messages);
+				if(Route53Message.isDebug())
+					logger.info("Hnadling " + messages.size() + " messages from queue.");
 				if(!messages.isEmpty())
 					break;
 				Thread.sleep(50);
 			}
 			for (Message message : messages) {
 				sqsMessage = new Route53Message(message); 
-				logger.info("Handling message: " + sqsMessage.getBody());
+				if(Route53Message.isDebug())
+					logger.info("Handling message: " + sqsMessage.getBody());
 				handleMessage(sqsMessage, context);
 				deleteMessage(sqsMessage);
-				logger.info("Deleted message");
+				if(Route53Message.isDebug())
+					logger.info("Deleted message");
 			}
 		} catch (InterruptedException | IOException e) {
 			e.printStackTrace();

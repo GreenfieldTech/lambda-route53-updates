@@ -30,7 +30,8 @@ public class Route53Message{
 	public Route53Message(Message sqs) {
 		this.message = sqs;
 		this.body = retreiveBody();
-		logger.info("SQS message body: " + body);
+		if(Route53Message.isDebug())
+			logger.info("SQS message body: " + body);
 		try {
 			if(Objects.isNull(body.get("NotificationMetadata")))
 				throw new IOException("No metadata was sent");
@@ -41,9 +42,11 @@ public class Route53Message{
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
-		logger.info("SRV_RECORD: " + this.SRV_RECORD + ", DNSRR_RECORD: " + this.DNSRR_RECORD);
+		if(Route53Message.isDebug())
+			logger.info("SRV_RECORD: " + this.SRV_RECORD + ", DNSRR_RECORD: " + this.DNSRR_RECORD);
 	}
 	
+	@SuppressWarnings("unchecked")
 	public Route53Message(SNSRecord sns) {
 		try {
 			this.body = s_mapper.readValue(sns.getSNS().getMessage(), Map.class);
@@ -52,7 +55,8 @@ public class Route53Message{
 		}
 		this.SRV_RECORD = getEnvByPrefix("SRV_RECORD");
 		this.DNSRR_RECORD = getEnvByPrefix("DNSRR_RECORD");
-		logger.info("SRV_RECORD: " + this.SRV_RECORD + " DNSRR_RECORD: " + this.DNSRR_RECORD);
+		if(Route53Message.isDebug())
+			logger.info("SRV_RECORD: " + this.SRV_RECORD + " DNSRR_RECORD: " + this.DNSRR_RECORD);
 	}
 	
 	/**
@@ -65,6 +69,7 @@ public class Route53Message{
 				.map(e -> e.getValue()).collect(Collectors.toList());
 	}
 	
+	@SuppressWarnings("unchecked")
 	public Map<String, Object> retreiveBody(){
 		String sqsMessageText = this.message.getBody();
 		Map<String, Object> obj = null;
@@ -74,7 +79,6 @@ public class Route53Message{
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
-		logger.info("Parsed body: " + obj);
 		return obj;
 	}
 	

@@ -200,14 +200,10 @@ public class EventHandler {
 			log("Removing instance with addresses: " + ip + ", " + addr);
 
 		ChangeResourceRecordSetsRequest req = null;
-		if (message.useDNSRR()) {
+		if (message.useDNSRR())
 			req = Tools.getAndRemoveRecord(message.getDNSRR_RECORD().stream().map(hostname -> new SimpleEntry<>(hostname, ip)), RRType.A, ttl);
-			logger.log("req: " + req);
-		}
 		if (message.useSRV()) {
-			logger.log("addr: " + addr);
 			ChangeResourceRecordSetsRequest srvReq = Tools.getAndRemoveRecord(message.getSRVEntries(addr).entrySet().stream(), RRType.SRV, ttl);
-			logger.log("srvReq: " + srvReq);
 			if (Objects.isNull(req))
 				req = srvReq;
 			else {
