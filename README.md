@@ -5,6 +5,10 @@ Java AWS Lambda package that receives notifications to update Route53 Hosted Zon
 This configurable implementation allows AWS Auto Scaling Groups to send events to SNS[1] topics that will cause Route53 DNS
 resource records to be updated with the IP addresses of launched instances.
 
+[![CircleCI Status](https://circleci.com/gh/GreenfieldTech/lambda-route53-updates.svg?style=svg)](https://circleci.com/gh/GreenfieldTech/lambda-route53-updates)
+[![Travis Status](https://travis-ci.org/GreenfieldTech/lambda-route53-updates.svg?branch=master)](https://travis-ci.org/GreenfieldTech/lambda-route53-updates)
+
+
 Features:
  * Support for both:
    * [auto scaling notifications][2] 
