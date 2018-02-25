@@ -116,7 +116,7 @@ public class Route53Message{
 	 * 	record set to update (add or remove a record)
 	 */
 	public Map<String,String> getSRVEntries(String hostname) {
-		return getDNSRR_RECORD().stream().map(var -> {
+		return getSRV_RECORD().stream().map(var -> {
 			if (Objects.isNull(var) || var.isEmpty())
 				throw new UnsupportedOperationException("Cannot construct SRV record without SRV_RECORD environment variable");
 			String[] parts = var.split(":");
