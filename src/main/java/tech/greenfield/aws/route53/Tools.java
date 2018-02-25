@@ -2,10 +2,9 @@ package tech.greenfield.aws.route53;
 
 import static tech.greenfield.aws.Clients.route53;
 
-import java.util.HashSet;
-import java.util.Objects;
-import java.util.Map;
+import java.util.*;
 import java.util.function.Predicate;
+import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -43,6 +42,7 @@ import com.amazonaws.services.route53.model.ResourceRecordSet;
  */
 public class Tools {
 	private static final long WAIT_PULSE = 250;
+	private final static Logger logger = Logger.getLogger(Tools.class.getName());
 
 	/**
 	 * Wait until the specified change request has been applied on Route53 servers
@@ -62,7 +62,7 @@ public class Tools {
 
 	/**
 	 * Retrieve a single record set with the specified name and type.
-	 * This method relies on {@link NotifyRecords#getHostedZoneId()} which
+	 * This method relies on {@link Response#getHostedZoneId()} which
 	 * requires setting the environment variable HOSTED_ZONE_ID
 	 * @param hostname FQDN of record set to retrieve
 	 * @param type RR type of record to retrieve
@@ -74,7 +74,7 @@ public class Tools {
 			hostname = hostname + ".";
 		final String domainname = hostname;
 		ListResourceRecordSetsRequest req = new ListResourceRecordSetsRequest()
-				.withHostedZoneId(NotifyRecords.getHostedZoneId())
+				.withHostedZoneId(Route53Message.getHostedZoneId())
 				.withStartRecordName(hostname)
 				.withStartRecordType(type)
 				.withMaxItems("1");
@@ -120,6 +120,25 @@ public class Tools {
 			return new ResourceRecordSetChange(origrr, rr);
 		}));
 	}
+	
+	public static ChangeResourceRecordSetsRequest createRecordSet(Stream<Map.Entry<String, List<String>>> mappings, RRType rtype, long ttl) {
+		List<Change> changes = new ArrayList<Change>();
+		mappings.forEach(entry -> {
+			changes.add(new Change(ChangeAction.DELETE, getRecordSet(entry.getKey(), rtype, ttl)));
+			if (Route53Message.isDebug())
+				logger.info("Updating: " + entry.getKey() + ", with instances: " + Arrays.toString(entry.getValue().toArray()));
+			ResourceRecordSet resourceRecordSet = new ResourceRecordSet(entry.getKey(), rtype);
+			resourceRecordSet.setTTL(ttl);
+			List<ResourceRecord> resourceRecords = new ArrayList<>();
+			entry.getValue().forEach(ip -> {
+				resourceRecords.add(new ResourceRecord(ip)); 
+			});
+			resourceRecordSet.setResourceRecords(resourceRecords);
+			changes.add(new Change(ChangeAction.CREATE, resourceRecordSet));
+//			new ResourceRecordSetChange(getRecordSet(entry.getKey(), rtype, ttl), resourceRecordSet);
+		});
+		return new ChangeResourceRecordSetsRequest(Route53Message.getHostedZoneId(), new ChangeBatch(changes));	
+	}
 
 	/**
 	 * Create a Route53 change request that removes the specified value to the specified
@@ -141,13 +160,13 @@ public class Tools {
 
 	/**
 	 * Create an UPSERT {@link ChangeResourceRecordSetsRequest} from a resource record set
-	 * This method relies on {@link NotifyRecords#getHostedZoneId()} which
+	 * This method relies on {@link Response#getHostedZoneId()} which
 	 * requires setting the environment variable HOSTED_ZONE_ID
 	 * @param rrsets resource record set to "upsert"
 	 * @return Change resource record set request to submit to Route53
 	 */
 	private static ChangeResourceRecordSetsRequest rrsetsToChange(Stream<ResourceRecordSetChange> rrsets) {
-		return new ChangeResourceRecordSetsRequest(NotifyRecords.getHostedZoneId(),
+		return new ChangeResourceRecordSetsRequest(Route53Message.getHostedZoneId(),
 				new ChangeBatch(rrsets.map(rr -> rr.removedAll() ? 
 						new Change(ChangeAction.DELETE, rr.oldRRS()) : 
 							new Change(ChangeAction.UPSERT, rr.newRRS())).collect(Collectors.toList())));

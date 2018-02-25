@@ -3,6 +3,7 @@ package tech.greenfield.aws.route53;
 import java.util.Map;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 /**
  * POJO representing an AutoScaling notification received through SNS
@@ -75,6 +76,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
  *     License along with this library; if not, write to the Free Software
  *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class AutoScalingNotification {
 	
 	private String progress;
