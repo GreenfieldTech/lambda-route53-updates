@@ -7,13 +7,14 @@ import com.amazonaws.services.lambda.runtime.Context;
 
 import tech.greenfield.aws.route53.EventHandler;
 import tech.greenfield.aws.route53.LifeCycleNotification;
+import tech.greenfield.aws.route53.Route53Message;
 
 public class LifeCycle extends EventHandler {
 
 	private LifeCycleNotification event;
 
-	public LifeCycle(Context context, LifeCycleNotification event) {
-		super(context, event.getType(), event.getEC2InstanceId());
+	public LifeCycle(Context context, LifeCycleNotification event, Route53Message message) {
+		super(context, event.getType(), event.getEC2InstanceId(), event.getAutoScalingGroupName(), message);
 		this.event = event;
 	}
 
