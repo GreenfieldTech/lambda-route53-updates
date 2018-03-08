@@ -11,14 +11,14 @@ jobs:
           key: lambda-route53-{{ checksum "pom.xml" }}
       - run: mvn dependency:go-offline
       - save_cache:
-        paths:
-          - ~/.m2
-        key: lambda-route53-{{ checksum "pom.xml" }}
+          paths:
+            - ~/.m2
+          key: lambda-route53-{{ checksum "pom.xml" }}
       - run: mvn -B package shade:shade
       - store_test_results:
-        path: target/surefire-reports
+          path: target/surefire-reports
       - store_artifacts:
-        path: target/lambda-route53-updates-*.jar
+          path: target/lambda-route53-updates-*.jar
 
 #dependencies:
 #  pre:
