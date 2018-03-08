@@ -14,11 +14,13 @@ jobs:
           paths:
             - ~/.m2
           key: lambda-route53-{{ checksum "pom.xml" }}
-      - run: mvn -B package shade:shade
+      - run: |
+          mvn -B package shade:shade
+          install -D -m644 target/lambda-route53-updates-*.jar artifacts/
       - store_test_results:
           path: target/surefire-reports
       - store_artifacts:
-          path: target/lambda-route53-updates-*.jar
+          path: artifacts/
 
 #dependencies:
 #  pre:
