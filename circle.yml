@@ -3,7 +3,7 @@ version: 2
 jobs:
   build:
     docker:
-      - image: maven:8
+      - image: maven:jdk-8
     working_directory: ~/src
     steps:
       - checkout
