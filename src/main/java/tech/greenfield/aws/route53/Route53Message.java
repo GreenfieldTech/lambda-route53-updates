@@ -104,7 +104,7 @@ public class Route53Message{
 	 * @return true if SRV record update is requested
 	 */
 	public boolean useSRV() {
-		return !getSRV_RECORD().isEmpty();
+		return (Objects.nonNull(getSRV_RECORD()) && !getSRV_RECORD().isEmpty());
 	}
 	
 	/**
