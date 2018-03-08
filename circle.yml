@@ -1,19 +1,68 @@
-machine:
-  java:
-    version: openjdk8
+version: 2
 
-dependencies:
-  pre:
-    - go get github.com/tcnksm/ghr
-  override:
-    - mvn -B package shade:shade
+jobs:
+  build:
+    docker:
+      - image: maven:3-jdk-8
+    working_directory: ~/src
+    steps:
+      - checkout
+      - restore_cache:
+          key: lambda-route53-{{ checksum "pom.xml" }}
+      - run: mvn dependency:go-offline
+      - save_cache:
+          paths:
+            - ~/.m2
+          key: lambda-route53-{{ checksum "pom.xml" }}
+      - run: |
+          mvn -B package shade:shade
+          mkdir -p artifacts
+          install -D -m644 target/lambda-route53-updates-*.jar artifacts/
+      - store_test_results:
+          path: target/surefire-reports
+      - store_artifacts:
+          path: artifacts/
+      - persist_to_workspace:
+          root: .
+          paths:
+            - artifacts
+  deploy:
+    docker:
+      - image: circleci/golang:1.8
+    working_directory: ~/src
+    steps:
+      - checkout
+      - attach_workspace:
+          at: build
+      - run: go get github.com/tcnksm/ghr
+      - run: ghr -t $GITHUB_TOKEN -u $CIRCLE_PROJECT_USERNAME -r $CIRCLE_PROJECT_REPONAME --replace `git describe --tags` build/artifacts
 
-test:
-  post:
-    - install -D -m644 target/lambda-route53-updates-*.jar $CIRCLE_ARTIFACTS
+workflows:
+  version: 2
+  build-to-gh:
+    jobs:
+      - build
+      - deploy:
+          requires:
+            - build
+          filters:
+            tags:
+              only: /(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)/
+            branches:
+              ignore: /.*/
 
-deployment:
-  release:
-    tag: /(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)/
-    commands:
-      - ghr -t $GITHUB_TOKEN -u $CIRCLE_PROJECT_USERNAME -r $CIRCLE_PROJECT_REPONAME --replace `git describe --tags` $CIRCLE_ARTIFACTS
+#dependencies:
+#  pre:
+#    - go get github.com/tcnksm/ghr
+#  override:
+#    - mvn -B package shade:shade
+#
+#test:
+#  post:
+#    - install -D -m644 target/lambda-route53-updates-*.jar $CIRCLE_ARTIFACTS
+#
+#deployment:
+#  release:
+#    tag: /(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)/
+#    commands:
+#      - ghr -t $GITHUB_TOKEN -u $CIRCLE_PROJECT_USERNAME -r $CIRCLE_PROJECT_REPONAME --replace `git describe --tags` $CIRCLE_ARTIFACTS
