@@ -151,11 +151,15 @@ public class EventHandler {
 	 */
 	private void registerInstance(String ec2InstanceId) throws NoIpException{
 		log("Registering " + ec2InstanceId);
-		Instance i = getInstance(ec2InstanceId);
-		ChangeResourceRecordSetsRequest req = createAddChangeRequest(getIPAddress(i), getHostAddress(i), Route53Message.getTTL());
-		if (Route53Message.isDebug())
-			log("Sending rr change request: " + req);
-		Tools.waitFor(route53().changeResourceRecordSets(req));
+		try {
+			Instance i = getInstance(ec2InstanceId);
+			ChangeResourceRecordSetsRequest req = createAddChangeRequest(getIPAddress(i), getHostAddress(i), Route53Message.getTTL());
+			if (Route53Message.isDebug())
+				log("Sending rr change request: " + req);
+			Tools.waitFor(route53().changeResourceRecordSets(req));
+		} catch (RuntimeException e) {
+			throw new NoIpException(e.getMessage());
+		}
 	}
 	
 	/**
