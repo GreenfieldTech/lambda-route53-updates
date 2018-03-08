@@ -41,7 +41,10 @@ workflows:
   version: 2
   build-to-gh:
     jobs:
-      - build
+      - build:
+          filters:
+            tags:
+              only: /.*/
       - deploy:
           requires:
             - build
