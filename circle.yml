@@ -49,7 +49,7 @@ workflows:
             tags:
               only: /(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)/
             branches:
-              only: /.*/
+              ignore: /.*/
 
 #dependencies:
 #  pre:
