@@ -2,6 +2,8 @@ package tech.greenfield.aws.route53.eventhandler;
 
 import static tech.greenfield.aws.Clients.autoscaling;
 
+import java.util.Objects;
+
 import com.amazonaws.services.autoscaling.model.CompleteLifecycleActionRequest;
 import com.amazonaws.services.lambda.runtime.Context;
 
@@ -23,11 +25,16 @@ public class LifeCycle extends EventHandler {
 		super.handle();
 		// after handling the event, we need to invoke the life cycle action handler
 		// to complete the life cycle
-		log("Completing life-cycle action with token " + event.getLifecycleActionToken());
+		String lifecycleActionToken = event.getLifecycleActionToken();
+		if (Objects.isNull(lifecycleActionToken)) {
+			log("Skipping lifecycle completion because there's no token");
+			return;
+		}
+		log("Completing life-cycle action with token " + lifecycleActionToken);
 		autoscaling().completeLifecycleAction(new CompleteLifecycleActionRequest()
 				.withAutoScalingGroupName(event.getAutoScalingGroupName())
 				.withLifecycleHookName(event.getLifecycleHookName())
-				.withLifecycleActionToken(event.getLifecycleActionToken())
+				.withLifecycleActionToken(lifecycleActionToken)
 				.withLifecycleActionResult("CONTINUE"));
 	}
 
