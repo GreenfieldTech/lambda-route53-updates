@@ -83,7 +83,7 @@ public class EventHandler {
 		Map<String, Object> messageBody = msg.getBody();
 		if (Route53Message.isDebug())
 			context.getLogger().log("Got message: " + messageBody + "\n");
-		if (messageBody.containsKey("LifecycleHookName")) 
+		if (messageBody.containsKey("LifecycleTransition")) 
 			return new LifeCycle(context, s_mapper.convertValue(messageBody, LifeCycleNotification.class), msg);
 		else
 			return new AutoScaling(context, s_mapper.convertValue(messageBody, AutoScalingNotification.class), msg);
