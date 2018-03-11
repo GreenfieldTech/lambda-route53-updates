@@ -91,7 +91,7 @@ public class EventHandler {
 	
 	protected EventHandler(Context context, EventType eventType, String ec2InstanceId, String autoScalingGroupName, Route53Message message) {
 		this.logger = context.getLogger();
-		this.eventType = eventType;
+		this.eventType = Objects.requireNonNull(eventType, "Missing event type");
 		this.ec2instanceId = ec2InstanceId;
 		this.autoScalingGroupName = autoScalingGroupName;
 		this.message = message;
