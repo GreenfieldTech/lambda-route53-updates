@@ -85,6 +85,8 @@ public class EventHandler {
 			context.getLogger().log("Got message: " + messageBody + "\n");
 		if (messageBody.containsKey("LifecycleTransition")) 
 			return new LifeCycle(context, s_mapper.convertValue(messageBody, LifeCycleNotification.class), msg);
+		else if (msg.retreiveBody().containsKey("LifecycleTransition"))
+			return new LifeCycle(context, s_mapper.convertValue(msg.retreiveBody(), LifeCycleNotification.class), msg);
 		else
 			return new AutoScaling(context, s_mapper.convertValue(messageBody, AutoScalingNotification.class), msg);
 	}
