@@ -22,20 +22,30 @@ public class LifeCycle extends EventHandler {
 
 	@Override
 	public void handle() {
-		super.handle();
-		// after handling the event, we need to invoke the life cycle action handler
-		// to complete the life cycle
 		String lifecycleActionToken = event.getLifecycleActionToken();
-		if (Objects.isNull(lifecycleActionToken)) {
-			log("Skipping lifecycle completion because there's no token");
-			return;
+		try {
+			super.handle();
+			// after handling the event, we need to invoke the life cycle action handler
+			// to complete the life cycle
+			if (Objects.isNull(lifecycleActionToken)) {
+				log("Skipping lifecycle completion because there's no token");
+				return;
+			}
+			log("Completing life-cycle action with token " + lifecycleActionToken);
+			autoscaling().completeLifecycleAction(new CompleteLifecycleActionRequest()
+					.withAutoScalingGroupName(event.getAutoScalingGroupName())
+					.withLifecycleHookName(event.getLifecycleHookName())
+					.withLifecycleActionToken(lifecycleActionToken)
+					.withLifecycleActionResult("CONTINUE"));
+		} catch (Throwable e) {
+			log("Error in lifecycle event handlind, abandoning lifecycle with token " + lifecycleActionToken);
+			autoscaling().completeLifecycleAction(new CompleteLifecycleActionRequest()
+					.withAutoScalingGroupName(event.getAutoScalingGroupName())
+					.withLifecycleHookName(event.getLifecycleHookName())
+					.withLifecycleActionToken(lifecycleActionToken)
+					.withLifecycleActionResult("ABANDON"));
+			throw e;
 		}
-		log("Completing life-cycle action with token " + lifecycleActionToken);
-		autoscaling().completeLifecycleAction(new CompleteLifecycleActionRequest()
-				.withAutoScalingGroupName(event.getAutoScalingGroupName())
-				.withLifecycleHookName(event.getLifecycleHookName())
-				.withLifecycleActionToken(lifecycleActionToken)
-				.withLifecycleActionResult("CONTINUE"));
 	}
 
 }
