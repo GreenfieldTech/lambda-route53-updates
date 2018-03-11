@@ -79,9 +79,7 @@ public class NotifyRecordsSqs implements RequestHandler<SNSEvent, Route53UpdateR
 	}
 	
 	public List<Message> getMessages() throws IOException {
-		ReceiveMessageRequest req = new ReceiveMessageRequest(getQueueUrl());
-		req.setMaxNumberOfMessages(10);
-		return AmazonSQSClientBuilder.defaultClient().receiveMessage(req).getMessages();
+		return AmazonSQSClientBuilder.defaultClient().receiveMessage(new ReceiveMessageRequest(getQueueUrl()).withMaxNumberOfMessages(10)).getMessages();
 	}
 
 	public DeleteMessageResult deleteMessage(Route53Message message) throws IOException {
