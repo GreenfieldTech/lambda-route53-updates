@@ -115,7 +115,7 @@ public class Route53Message{
 	 * @return A pair where the key is the FQDN to update and the value is the
 	 * 	record set to update (add or remove a record)
 	 */
-	public Map<String,String> getSRVEntries(String hostname) {
+	public Map<String,List<String>> getSRVEntries(String hostname) {
 		return getSRV_RECORD().stream().map(var -> {
 			if (Objects.isNull(var) || var.isEmpty())
 				throw new UnsupportedOperationException("Cannot construct SRV record without SRV_RECORD environment variable");
@@ -123,7 +123,7 @@ public class Route53Message{
 			if (parts.length != 4)
 				throw new UnsupportedOperationException("Invalid SRV_RECORD format - " + "must conform to format '<priority>:<weight>:<port>:<name>'. currently is: " + var + " of length: " + parts.length);
 			return new AbstractMap.SimpleEntry<String,String>(parts[3], Stream.of(parts[0], parts[1],parts[2],hostname).collect(Collectors.joining(" ")));
-		}).collect(Collectors.toMap(SimpleEntry::getKey, SimpleEntry::getValue));
+		}).collect(Collectors.groupingBy(SimpleEntry::getKey, Collectors.mapping(SimpleEntry::getValue, Collectors.toList())));
 	}
 	
 	/**

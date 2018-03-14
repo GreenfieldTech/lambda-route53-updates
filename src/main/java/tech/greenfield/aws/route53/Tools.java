@@ -110,11 +110,12 @@ public class Tools {
 	 * @param value record to add to the resource record set
 	 * @return Change request that can be submitted to Route53
 	 */
-	public static ChangeResourceRecordSetsRequest getAndAddRecord(Stream<Map.Entry<String, String>> mappings, RRType rtype, long ttl) {
+	public static ChangeResourceRecordSetsRequest getAndAddRecord(Stream<Map.Entry<String, List<String>>> mappings, RRType rtype, long ttl) {
 		return rrsetsToChange(mappings.map(record -> {
 			ResourceRecordSet rr = Tools.getRecordSet(record.getKey(), rtype, ttl);
 			ResourceRecordSet origrr = rr.clone();
-			rr.getResourceRecords().add(new ResourceRecord(record.getValue()));
+			for (String recordVal : record.getValue())
+				rr.getResourceRecords().add(new ResourceRecord(recordVal));
 			HashSet<ResourceRecord> uniqRRs = new HashSet<>(rr.getResourceRecords());
 			rr.setResourceRecords(uniqRRs);
 			return new ResourceRecordSetChange(origrr, rr);
@@ -149,10 +150,10 @@ public class Tools {
 	 * @param value record to match and remove from the resource record set
 	 * @return Change request that can be submitted to Route53
 	 */
-	public static ChangeResourceRecordSetsRequest getAndRemoveRecord(Stream<Map.Entry<String, String>> mappings, RRType rtype, long ttl) {
+	public static ChangeResourceRecordSetsRequest getAndRemoveRecord(Stream<Map.Entry<String, List<String>>> mappings, RRType rtype, long ttl) {
 		ChangeResourceRecordSetsRequest request = rrsetsToChange(mappings.map(record -> {
 			ResourceRecordSet origRecord = getRecordSet(record.getKey(), rtype, ttl);
-			ResourceRecordSet update = removeRecord(origRecord, r -> Objects.equals(r.getValue(), record.getValue()));
+			ResourceRecordSet update = removeRecord(origRecord, r -> record.getValue().contains(r.getValue()));
 			return new ResourceRecordSetChange(origRecord, update);
 		}));
 		return request;
