@@ -1,13 +1,5 @@
 package tech.greenfield.aws.route53;
 
-import java.util.List;
-import java.util.Objects;
-
-import com.amazonaws.services.lambda.runtime.Context;
-import com.amazonaws.services.lambda.runtime.RequestHandler;
-import com.amazonaws.services.lambda.runtime.events.SNSEvent;
-import com.amazonaws.services.lambda.runtime.events.SNSEvent.SNSRecord;
-
 /**
  * Main entry point from the AWS Lambda engine, that takes an SNS event
  * @author odeda
