@@ -207,7 +207,7 @@ public class EventHandler {
 
 		ChangeResourceRecordSetsRequest req = null;
 		if (message.useDNSRR())
-			req = Tools.getAndRemoveRecord(message.getDNSRR_RECORD().stream().map(hostname -> new SimpleEntry<>(hostname, ip)), RRType.A, ttl);
+			req = Tools.getAndRemoveRecord(message.getDNSRR_RECORD().stream().map(hostname -> new SimpleEntry<>(hostname, Arrays.asList(ip))), RRType.A, ttl);
 		if (message.useSRV()) {
 			ChangeResourceRecordSetsRequest srvReq = Tools.getAndRemoveRecord(message.getSRVEntries(addr).entrySet().stream(), RRType.SRV, ttl);
 			if (Objects.isNull(req))
@@ -242,10 +242,10 @@ public class EventHandler {
 		
 		ChangeResourceRecordSetsRequest req = null;
 		if (message.useDNSRR()) {
-			req = Tools.getAndAddRecord(message.getDNSRR_RECORD().stream().map(name -> new SimpleEntry<>(name, ip)), RRType.A, ttl);
+			req = Tools.getAndAddRecord(message.getDNSRR_RECORD().stream().map(name -> new SimpleEntry<>(name, Arrays.asList(ip))), RRType.A, ttl);
 		}
 		if (message.useSRV()) {
-			Map<String, String> records = message.getSRVEntries(addr);
+			Map<String,List<String>> records = message.getSRVEntries(addr);
 			ChangeResourceRecordSetsRequest srvReq = Tools.getAndAddRecord(records.entrySet().stream(), RRType.SRV, ttl);
 			if (Objects.isNull(req))
 				req = srvReq;

@@ -25,7 +25,6 @@ public class NotifyRecordsSqs implements RequestHandler<SNSEvent, Route53UpdateR
 	private Route53Message sqsMessage;
 	
 	public NotifyRecordsSqs() {
-
 	}
 
 	@Override
