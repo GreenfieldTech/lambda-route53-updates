@@ -16,9 +16,7 @@ import com.amazonaws.services.ec2.model.DescribeInstancesRequest;
 import com.amazonaws.services.ec2.model.Instance;
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.LambdaLogger;
-import com.amazonaws.services.route53.model.ChangeBatch;
-import com.amazonaws.services.route53.model.ChangeResourceRecordSetsRequest;
-import com.amazonaws.services.route53.model.RRType;
+import com.amazonaws.services.route53.model.*;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -119,7 +117,11 @@ public class EventHandler {
 			DescribeAutoScalingGroupsRequest request = new DescribeAutoScalingGroupsRequest().withAutoScalingGroupNames(this.autoScalingGroupName);
 			List<com.amazonaws.services.autoscaling.model.Instance> instances = autoscaling().describeAutoScalingGroups(request).getAutoScalingGroups().get(0).getInstances();
 			Entry<String, List<String>> instancesToUpdate = getEc2InstancesFromAsgInstances(instances);
-			ChangeResourceRecordSetsRequest req = createChangeRequest(instancesToUpdate.getValue(), instancesToUpdate.getKey(), Route53Message.getTTL());
+			ChangeResourceRecordSetsRequest req;
+			if (instancesToUpdate.getValue().size() == 0)
+				req = createDeleteRequest(instancesToUpdate.getKey()); 
+			else
+				req = createChangeRequest(instancesToUpdate.getValue(), instancesToUpdate.getKey(), Route53Message.getTTL());
 			if (Route53Message.isDebug())
 				log("Sending rr change request: " + req);
 			Tools.waitFor(route53().changeResourceRecordSets(req));
@@ -292,6 +294,17 @@ public class EventHandler {
 		if (Objects.isNull(req))
 			throw new UnsupportedOperationException("Please specify either DNSRR_RECORD or SRV_RECORD");
 		return req;
+	}
+	
+	private ChangeResourceRecordSetsRequest createDeleteRequest(String addr) {
+		ArrayList<Change> changes = new ArrayList<>();
+		if (message.useDNSRR())
+			changes.add(new Change(ChangeAction.DELETE, new ResourceRecordSet(addr, RRType.A)));
+		if (message.useSRV())
+			changes.add(new Change(ChangeAction.DELETE, new ResourceRecordSet(addr, RRType.SRV)));
+		if (changes.isEmpty())
+			throw new UnsupportedOperationException("Please specify either DNSRR_RECORD or SRV_RECORD");
+		return new ChangeResourceRecordSetsRequest(Route53Message.getHostedZoneId(), new ChangeBatch(changes));
 	}
 	
 	/**
