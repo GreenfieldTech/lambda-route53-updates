@@ -275,13 +275,12 @@ public class EventHandler {
 			req = Tools.createRecordSet(message.getDNSRR_RECORD().stream().map(hostname -> new SimpleEntry<>(hostname, instances)), RRType.A, ttl);
 		
 		if (message.useSRV()) {
-			List<Map.Entry<String, List<String>>> rrsList = new ArrayList<>();
-			message.getSRV_RECORD().forEach(conf -> {
+			Map<String, List<String>> rrsList = message.getSRV_RECORD().stream().flatMap(conf -> {
 				String[] parts = conf.split(":");
-				List<String> x = instances.stream().map(ip -> Stream.of(parts[0], parts[1], parts[2], ip).collect(Collectors.joining(" "))).collect(Collectors.toList());
-				rrsList.add(new AbstractMap.SimpleEntry<String,List<String>>(parts[3], x));
-			});
-			ChangeResourceRecordSetsRequest srvReq = Tools.createRecordSet(rrsList.stream(), RRType.SRV, ttl);
+				return instances.stream().map(ip -> Stream.of(parts[0], parts[1], parts[2], ip).collect(Collectors.joining(" ")))
+						.map(s -> new AbstractMap.SimpleEntry<String,String>(parts[3],s));
+			}).collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
+			ChangeResourceRecordSetsRequest srvReq = Tools.createRecordSet(rrsList.entrySet().stream(), RRType.SRV, ttl);
 			if (Objects.isNull(req))
 				req = srvReq;
 			else {
