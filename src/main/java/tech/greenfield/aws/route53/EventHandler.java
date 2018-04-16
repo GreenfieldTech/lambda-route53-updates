@@ -110,7 +110,7 @@ public class EventHandler {
 			case EC2_INSTANCE_TERMINATE_ERROR:
 				deregisterInstance(ec2instanceId);
 				break;
-			default: // do nothing in case of launch error or test notifcation
+			default: // do nothing in case of launch error or test notification
 			}
 		} catch(NoIpException e) {
 			logger.log("No IP was found, starting plan B - update all instances");
@@ -156,11 +156,25 @@ public class EventHandler {
 	private void registerInstance(String ec2InstanceId) throws NoIpException{
 		log("Registering " + ec2InstanceId);
 		try {
-			Instance i = getInstance(ec2InstanceId);
-			ChangeResourceRecordSetsRequest req = createAddChangeRequest(getIPAddress(i), getHostAddress(i), Route53Message.getTTL());
-			if (Route53Message.isDebug())
-				log("Sending rr change request: " + req);
-			Tools.waitFor(route53().changeResourceRecordSets(req));
+			while (true) {
+				try {
+					Instance i = getInstance(ec2InstanceId);
+					ChangeResourceRecordSetsRequest req = createAddChangeRequest(getIPAddress(i), getHostAddress(i), Route53Message.getTTL());
+					if (Route53Message.isDebug())
+						log("Sending rr change request: " + req);
+					Tools.waitFor(route53().changeResourceRecordSets(req));
+				} catch (AmazonRoute53Exception e) {
+					// retry in case of 
+					if (e.getMessage().contains("Rate exceeded")) {
+						try {
+							wait(1000);
+						} catch (InterruptedException e1) { }
+						continue;
+					} else
+						throw e;
+				}
+				break;
+			}
 		} catch (RuntimeException e) {
 			throw new NoIpException(e.getMessage());
 		}
@@ -173,12 +187,26 @@ public class EventHandler {
 	 * @throws NoIpException 
 	 */
 	private void deregisterInstance(String ec2InstanceId) throws NoIpException {
-		log("Deregistering " + ec2InstanceId);
-		Instance i = getInstance(ec2InstanceId);
-		ChangeResourceRecordSetsRequest req = createRemoveChangeRequest(getIPAddress(i), getHostAddress(i), Route53Message.getTTL());
-		if (Route53Message.isDebug())
-			log("Sending rr change request: " + req);
-		Tools.waitFor(route53().changeResourceRecordSets(req));
+		while (true) {
+			try {
+				log("Deregistering " + ec2InstanceId);
+				Instance i = getInstance(ec2InstanceId);
+				ChangeResourceRecordSetsRequest req = createRemoveChangeRequest(getIPAddress(i), getHostAddress(i), Route53Message.getTTL());
+				if (Route53Message.isDebug())
+					log("Sending rr change request: " + req);
+				Tools.waitFor(route53().changeResourceRecordSets(req));
+			} catch (AmazonRoute53Exception e) {
+				// retry in case of 
+				if (e.getMessage().contains("Rate exceeded")) {
+					try {
+						wait(1000);
+					} catch (InterruptedException e1) { }
+					continue;
+				} else
+					throw e;
+			}
+			break;
+		}
 	}
 
 	private String getHostAddress(Instance i) {
