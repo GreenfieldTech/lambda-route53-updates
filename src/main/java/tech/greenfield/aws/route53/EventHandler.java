@@ -159,7 +159,7 @@ public class EventHandler {
 			while (true) {
 				try {
 					Instance i = getInstance(ec2InstanceId);
-					ChangeResourceRecordSetsRequest req = createAddChangeRequest(getIPAddress(i), getHostAddress(i), Route53Message.getTTL());
+					ChangeResourceRecordSetsRequest req = createAddChangeRequest(getIPAddress(i), getIPv6Address(i), getHostAddress(i), Route53Message.getTTL());
 					if (Route53Message.isDebug())
 						log("Sending rr change request: " + req);
 					Tools.waitFor(route53().changeResourceRecordSets(req));
@@ -191,7 +191,7 @@ public class EventHandler {
 			try {
 				log("Deregistering " + ec2InstanceId);
 				Instance i = getInstance(ec2InstanceId);
-				ChangeResourceRecordSetsRequest req = createRemoveChangeRequest(getIPAddress(i), getHostAddress(i), Route53Message.getTTL());
+				ChangeResourceRecordSetsRequest req = createRemoveChangeRequest(getIPAddress(i), getIPv6Address(i), getHostAddress(i), Route53Message.getTTL());
 				if (Route53Message.isDebug())
 					log("Sending rr change request: " + req);
 				Tools.waitFor(route53().changeResourceRecordSets(req));
@@ -219,6 +219,11 @@ public class EventHandler {
 	private String getIPAddress(Instance i) {
 		return Route53Message.isPrivate() ? i.getPrivateIpAddress() : i.getPublicIpAddress();
 	}
+	
+	private String getIPv6Address(Instance i) {
+		return i.getNetworkInterfaces().stream().flatMap(in -> in.getIpv6Addresses().stream()).findFirst()
+				.map(addr -> addr.getIpv6Address()).orElse(null);
+	}
 
 	/**
 	 * Create a "remove record" request for the specified instance
@@ -228,79 +233,77 @@ public class EventHandler {
 	 * @return record removal request for Route53
 	 * @throws NoIpException 
 	 */
-	private ChangeResourceRecordSetsRequest createRemoveChangeRequest(String ip, String addr, long ttl) throws NoIpException {
-		if (Objects.isNull(ip))
+	private ChangeResourceRecordSetsRequest createRemoveChangeRequest(String ipv4, String ipv6, String addr, long ttl) throws NoIpException {
+		if (Objects.isNull(ipv4))
 			throw new NoIpException("Cowardly refusing to remove an instance with no IP address");
 		
 		if (Route53Message.isDebug())
-			log("Removing instance with addresses: " + ip + ", " + addr);
-
-		ChangeResourceRecordSetsRequest req = null;
-		if (message.useDNSRR())
-			req = Tools.getAndRemoveRecord(message.getDNSRR_RECORD().stream().map(hostname -> new SimpleEntry<>(hostname, Arrays.asList(ip))), RRType.A, ttl);
-		if (message.useSRV()) {
-			ChangeResourceRecordSetsRequest srvReq = Tools.getAndRemoveRecord(message.getSRVEntries(addr).entrySet().stream(), RRType.SRV, ttl);
-			if (Objects.isNull(req))
-				req = srvReq;
-			else {
-				// already have a DNS RR change batch in queue, just add our changes
-				ChangeBatch b = req.getChangeBatch();
-				srvReq.getChangeBatch().getChanges().forEach(b::withChanges);
-			}
+			log("Removing instance with addresses: " + ipv4 + ", " + addr);
+		
+		ChangeBatch cb = new ChangeBatch();
+		if (message.useDNSRR()) {
+			Tools.getAndRemoveRecord(message.getDNSRR_RECORD().stream().map(hostname -> new SimpleEntry<>(hostname, Arrays.asList(ipv4))), 
+					RRType.A, ttl).getChanges().forEach(cb::withChanges);
+			if (Objects.nonNull(ipv6))
+				Tools.getAndRemoveRecord(message.getDNSRR_RECORD().stream().map(hostname -> new SimpleEntry<>(hostname, Arrays.asList(ipv6))), 
+						RRType.AAAA, ttl).getChanges().forEach(cb::withChanges);
 		}
 		
-		if (Objects.isNull(req))
-			throw new UnsupportedOperationException(
-					"Please specify either DNSRR_RECORD or SRV_RECORD");
-		return req;
+		if (message.useSRV())
+			Tools.getAndRemoveRecord(
+					message.getSRVEntries(addr).entrySet().stream(), 
+					RRType.SRV, ttl).getChanges().forEach(cb::withChanges);
+		
+		return new ChangeResourceRecordSetsRequest(Route53Message.getHostedZoneId(), cb);
 	}
 
 	/**
 	 * Create a "add record" request for the specified instance
-	 * @param ip IP address of the instance to register
+	 * @param ipv4 IP address of the instance to register
 	 * @param addr host name of the instance to register
 	 * @param ttl TTL in seconds to use when creating a new record
 	 * @return record addition request for Route53
 	 * @throws NoIpException 
 	 */
-	private ChangeResourceRecordSetsRequest createAddChangeRequest(String ip, String addr, long ttl) throws NoIpException {
-		if (Objects.isNull(ip))
+	private ChangeResourceRecordSetsRequest createAddChangeRequest(String ipv4, String ipv6, String addr, long ttl) throws NoIpException {
+		if (Objects.isNull(ipv4))
 			throw new NoIpException("Cowardly refusing to add an instance with no IP address");
 		
 		if (Route53Message.isDebug())
-			log("Adding instance with addresses: " + ip + ", " + addr);
+			log("Adding instance with addresses: " + ipv4 + ", " + ipv6 + ", " + addr);
 		
-		ChangeResourceRecordSetsRequest req = null;
+		ChangeBatch cb = new ChangeBatch();
+		
 		if (message.useDNSRR()) {
-			req = Tools.getAndAddRecord(message.getDNSRR_RECORD().stream().map(name -> new SimpleEntry<>(name, Arrays.asList(ip))), RRType.A, ttl);
+			// must have ipv4
+			Tools.getAndAddRecord(
+					message.getDNSRR_RECORD().stream().map(name -> new SimpleEntry<>(name, Arrays.asList(ipv4))),
+					RRType.A, ttl).getChanges().forEach(cb::withChanges);
+			// ipv6 optional
+			if (Objects.nonNull(ipv6))
+				Tools.getAndAddRecord(
+						message.getDNSRR_RECORD().stream().map(name -> new SimpleEntry<>(name, Arrays.asList(ipv6))),
+						RRType.AAAA, ttl).getChanges().forEach(cb::withChanges);
 		}
-		if (message.useSRV()) {
-			Map<String,List<String>> records = message.getSRVEntries(addr);
-			ChangeResourceRecordSetsRequest srvReq = Tools.getAndAddRecord(records.entrySet().stream(), RRType.SRV, ttl);
-			if (Objects.isNull(req))
-				req = srvReq;
-			else {
-				// already have a DNS RR change batch in queue, just add our changes
-				ChangeBatch b = req.getChangeBatch();
-				srvReq.getChangeBatch().getChanges().forEach(b::withChanges);
-			}
-		}
+		if (message.useSRV())
+			Tools.getAndAddRecord(message.getSRVEntries(addr).entrySet().stream(), RRType.SRV, ttl).getChanges()
+					.forEach(cb::withChanges);
 		
-		if (Objects.isNull(req))
-			throw new UnsupportedOperationException(
-					"Please specify either DNSRR_RECORD or SRV_RECORD");
-		return req;
+		return new ChangeResourceRecordSetsRequest(Route53Message.getHostedZoneId(), cb);
 	}
 	
 	private ChangeResourceRecordSetsRequest createChangeRequest(List<String> instances, String addr, long ttl) {
 //		if (Objects.isNull(ip))
 //			throw new SilentFailure("Cowardly refusing to add an instance with no IP address");
-//		if (isDebug())
-//			log("Adding instance with addresses: " + ip + ", " + addr);
+		if (Route53Message.isDebug())
+			log("Creating RR with addresses: " + addr);
 		
-		ChangeResourceRecordSetsRequest req = null;
-		if (message.useDNSRR())
-			req = Tools.createRecordSet(message.getDNSRR_RECORD().stream().map(hostname -> new SimpleEntry<>(hostname, instances)), RRType.A, ttl);
+		ChangeBatch cb = new ChangeBatch();
+		if (message.useDNSRR()) {
+			Tools.createRecordSet(
+					message.getDNSRR_RECORD().stream().map(hostname -> new SimpleEntry<>(hostname, instances)), 
+					RRType.A, ttl).getChanges().forEach(cb::withChanges);
+		}
 		
 		if (message.useSRV()) {
 			Map<String, List<String>> rrsList = message.getSRV_RECORD().stream().flatMap(conf -> {
@@ -308,19 +311,10 @@ public class EventHandler {
 				return instances.stream().map(ip -> Stream.of(parts[0], parts[1], parts[2], ip).collect(Collectors.joining(" ")))
 						.map(s -> new AbstractMap.SimpleEntry<String,String>(parts[3],s));
 			}).collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
-			ChangeResourceRecordSetsRequest srvReq = Tools.createRecordSet(rrsList.entrySet().stream(), RRType.SRV, ttl);
-			if (Objects.isNull(req))
-				req = srvReq;
-			else {
-				// already have a DNS RR change batch in queue, just add our changes
-				ChangeBatch b = req.getChangeBatch();
-				srvReq.getChangeBatch().getChanges().forEach(b::withChanges);
-			}
+			Tools.createRecordSet(rrsList.entrySet().stream(), RRType.SRV, ttl).getChanges().forEach(cb::withChanges);
 		}
 		
-		if (Objects.isNull(req))
-			throw new UnsupportedOperationException("Please specify either DNSRR_RECORD or SRV_RECORD");
-		return req;
+		return new ChangeResourceRecordSetsRequest(Route53Message.getHostedZoneId(), cb);
 	}
 	
 	private ChangeResourceRecordSetsRequest createDeleteRequest(String addr) {
