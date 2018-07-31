@@ -10,9 +10,11 @@ import java.util.AbstractMap.SimpleEntry;
 
 import org.junit.Test;
 
+import com.amazonaws.services.route53.model.ChangeBatch;
 import com.amazonaws.services.route53.model.ChangeResourceRecordSetsRequest;
 import com.amazonaws.services.route53.model.RRType;
 
+import tech.greenfield.aws.route53.Route53Message;
 import tech.greenfield.aws.route53.Tools;
 
 /**
@@ -43,8 +45,9 @@ public class TestRoute53 {
 	@Test
 	public void testAddA() {
 		if (disableLiveTests) return;
-		ChangeResourceRecordSetsRequest cr = Tools.getAndAddRecord(
+		ChangeBatch cb = Tools.getAndAddRecord(
 				Stream.of(new SimpleEntry<>("test." + testDomain, Arrays.asList("5.6.7.8"))), RRType.A, 30);
+		ChangeResourceRecordSetsRequest cr = new ChangeResourceRecordSetsRequest(Route53Message.getHostedZoneId(), cb);
 		Tools.waitFor(route53().changeResourceRecordSets(cr));
 		assertTrue(true);
 	}
@@ -62,13 +65,15 @@ public class TestRoute53 {
 	@Test
 	public void testAddSRV() {
 		if (disableLiveTests) return;
-		ChangeResourceRecordSetsRequest cr = Tools.getAndAddRecord(
+		ChangeBatch cb = Tools.getAndAddRecord(
 				Stream.of(new SimpleEntry<>("_sip._udp.test." + testDomain, Arrays.asList("1 1 5060 test1." + testDomain))), 
 				RRType.SRV, 30);
+		ChangeResourceRecordSetsRequest cr = new ChangeResourceRecordSetsRequest(Route53Message.getHostedZoneId(), cb);
 		Tools.waitFor(route53().changeResourceRecordSets(cr));
-		ChangeResourceRecordSetsRequest cr2 = Tools.getAndAddRecord(
+		ChangeBatch cb2 = Tools.getAndAddRecord(
 				Stream.of(new SimpleEntry<>("_sip._udp.test." + testDomain, Arrays.asList("1 1 5060 test2." + testDomain))), 
 				RRType.SRV, 30);
+		ChangeResourceRecordSetsRequest cr2 = new ChangeResourceRecordSetsRequest(Route53Message.getHostedZoneId(), cb2);
 		Tools.waitFor(route53().changeResourceRecordSets(cr2));
 		assertTrue(true);
 	}
