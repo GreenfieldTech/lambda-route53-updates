@@ -55,9 +55,10 @@ public class TestRoute53 {
 	@Test
 	public void testRemoveA() {
 		if (disableLiveTests) return;
-		ChangeResourceRecordSetsRequest cr = Tools.getAndRemoveRecord(
+		ChangeBatch cb = Tools.getAndRemoveRecord(
 				Stream.of(new SimpleEntry<>("test." + testDomain, Arrays.asList("1.2.3.4"))), 
 				RRType.A, 30);
+		ChangeResourceRecordSetsRequest cr = new ChangeResourceRecordSetsRequest(Route53Message.getHostedZoneId(), cb);
 		Tools.waitFor(route53().changeResourceRecordSets(cr));
 		assertTrue(true);
 	}
@@ -81,9 +82,10 @@ public class TestRoute53 {
 	@Test
 	public void testRemoveSRV() {
 		if (disableLiveTests) return;
-		ChangeResourceRecordSetsRequest cr = Tools.getAndRemoveRecord(
+		ChangeBatch cb = Tools.getAndRemoveRecord(
 				Stream.of(new SimpleEntry<>("_sip._udp.test." + testDomain, Arrays.asList("1 1 5060 test1." + testDomain))), 
 				RRType.SRV, 30);
+		ChangeResourceRecordSetsRequest cr = new ChangeResourceRecordSetsRequest(Route53Message.getHostedZoneId(), cb);
 		Tools.waitFor(route53().changeResourceRecordSets(cr));
 		assertTrue(true);
 	}
