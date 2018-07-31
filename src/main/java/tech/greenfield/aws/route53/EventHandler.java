@@ -295,8 +295,8 @@ public class EventHandler {
 	private ChangeResourceRecordSetsRequest createChangeRequest(List<String> instances, String addr, long ttl) {
 //		if (Objects.isNull(ip))
 //			throw new SilentFailure("Cowardly refusing to add an instance with no IP address");
-//		if (isDebug())
-//			log("Adding instance with addresses: " + ip + ", " + addr);
+		if (Route53Message.isDebug())
+			log("Creating RR with addresses: " + addr);
 		
 		ChangeBatch cb = new ChangeBatch();
 		if (message.useDNSRR()) {
