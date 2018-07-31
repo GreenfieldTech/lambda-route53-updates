@@ -13,7 +13,7 @@ import org.junit.Test;
 import com.amazonaws.services.route53.model.ChangeResourceRecordSetsRequest;
 import com.amazonaws.services.route53.model.RRType;
 
-import tech.greenfield.aws.route53.Tools;
+import tech.greenfield.aws.route53.DNSTools;
 
 /**
  * Test tool for Route53 work
@@ -43,43 +43,43 @@ public class TestRoute53 {
 	@Test
 	public void testAddA() {
 		if (disableLiveTests) return;
-		ChangeResourceRecordSetsRequest cr = Tools.getAndAddRecord(
+		ChangeResourceRecordSetsRequest cr = DNSTools.getAndAddRecord(
 				Stream.of(new SimpleEntry<>("test." + testDomain, Arrays.asList("5.6.7.8"))), RRType.A, 30);
-		Tools.waitFor(route53().changeResourceRecordSets(cr));
+		DNSTools.waitFor(route53().changeResourceRecordSets(cr));
 		assertTrue(true);
 	}
 
 	@Test
 	public void testRemoveA() {
 		if (disableLiveTests) return;
-		ChangeResourceRecordSetsRequest cr = Tools.getAndRemoveRecord(
+		ChangeResourceRecordSetsRequest cr = DNSTools.getAndRemoveRecord(
 				Stream.of(new SimpleEntry<>("test." + testDomain, Arrays.asList("1.2.3.4"))), 
 				RRType.A, 30);
-		Tools.waitFor(route53().changeResourceRecordSets(cr));
+		DNSTools.waitFor(route53().changeResourceRecordSets(cr));
 		assertTrue(true);
 	}
 
 	@Test
 	public void testAddSRV() {
 		if (disableLiveTests) return;
-		ChangeResourceRecordSetsRequest cr = Tools.getAndAddRecord(
+		ChangeResourceRecordSetsRequest cr = DNSTools.getAndAddRecord(
 				Stream.of(new SimpleEntry<>("_sip._udp.test." + testDomain, Arrays.asList("1 1 5060 test1." + testDomain))), 
 				RRType.SRV, 30);
-		Tools.waitFor(route53().changeResourceRecordSets(cr));
-		ChangeResourceRecordSetsRequest cr2 = Tools.getAndAddRecord(
+		DNSTools.waitFor(route53().changeResourceRecordSets(cr));
+		ChangeResourceRecordSetsRequest cr2 = DNSTools.getAndAddRecord(
 				Stream.of(new SimpleEntry<>("_sip._udp.test." + testDomain, Arrays.asList("1 1 5060 test2." + testDomain))), 
 				RRType.SRV, 30);
-		Tools.waitFor(route53().changeResourceRecordSets(cr2));
+		DNSTools.waitFor(route53().changeResourceRecordSets(cr2));
 		assertTrue(true);
 	}
 
 	@Test
 	public void testRemoveSRV() {
 		if (disableLiveTests) return;
-		ChangeResourceRecordSetsRequest cr = Tools.getAndRemoveRecord(
+		ChangeResourceRecordSetsRequest cr = DNSTools.getAndRemoveRecord(
 				Stream.of(new SimpleEntry<>("_sip._udp.test." + testDomain, Arrays.asList("1 1 5060 test1." + testDomain))), 
 				RRType.SRV, 30);
-		Tools.waitFor(route53().changeResourceRecordSets(cr));
+		DNSTools.waitFor(route53().changeResourceRecordSets(cr));
 		assertTrue(true);
 	}
 

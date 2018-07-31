@@ -8,6 +8,8 @@ import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.events.SNSEvent;
 import com.amazonaws.services.lambda.runtime.events.SNSEvent.SNSRecord;
 
+import tech.greenfield.aws.LoggingObject;
+
 /**
  * Main entry point from the AWS Lambda engine, that takes an SNS event
  * @author odeda
@@ -37,6 +39,7 @@ public class NotifyRecordsSns implements RequestHandler<SNSEvent, Route53UpdateR
 	 * Main entry point
 	 */
 	public Route53UpdateResponse handleRequest(SNSEvent input, Context context) {
+		LoggingObject.setLogger(context.getLogger());
 		try {
 			if (Objects.isNull(input)) {
 				context.getLogger().log("Invalid SNS input object");

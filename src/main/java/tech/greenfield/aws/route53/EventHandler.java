@@ -4,6 +4,7 @@ import static tech.greenfield.aws.Clients.autoscaling;
 import static tech.greenfield.aws.Clients.ec2;
 import static tech.greenfield.aws.Clients.route53;
 
+import java.net.InetAddress;
 import java.util.*;
 import java.util.AbstractMap.SimpleEntry;
 import java.util.Map.Entry;
@@ -15,11 +16,12 @@ import com.amazonaws.services.autoscaling.model.DescribeAutoScalingGroupsRequest
 import com.amazonaws.services.ec2.model.DescribeInstancesRequest;
 import com.amazonaws.services.ec2.model.Instance;
 import com.amazonaws.services.lambda.runtime.Context;
-import com.amazonaws.services.lambda.runtime.LambdaLogger;
 import com.amazonaws.services.route53.model.*;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import tech.greenfield.aws.LoggingObject;
+import tech.greenfield.aws.Tools;
 import tech.greenfield.aws.route53.eventhandler.AutoScaling;
 import tech.greenfield.aws.route53.eventhandler.LifeCycle;
 
@@ -43,11 +45,10 @@ import tech.greenfield.aws.route53.eventhandler.LifeCycle;
  *     License along with this library; if not, write to the Free Software
  *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
-public class EventHandler {
+public class EventHandler extends LoggingObject {
 
 	static private ObjectMapper s_mapper = new ObjectMapper();
 	
-	private LambdaLogger logger;
 	private EventType eventType;
 	private String ec2instanceId;
 	private String autoScalingGroupName;
@@ -90,7 +91,6 @@ public class EventHandler {
 	}
 	
 	protected EventHandler(Context context, EventType eventType, String ec2InstanceId, String autoScalingGroupName, Route53Message message) {
-		this.logger = context.getLogger();
 		this.eventType = Objects.requireNonNull(eventType, "Missing event type");
 		this.ec2instanceId = ec2InstanceId;
 		this.autoScalingGroupName = autoScalingGroupName;
@@ -113,10 +113,10 @@ public class EventHandler {
 			default: // do nothing in case of launch error or test notification
 			}
 		} catch(NoIpException e) {
-			logger.log("No IP was found, starting plan B - update all instances");
+			log("No IP was found, starting plan B - update all instances");
 			DescribeAutoScalingGroupsRequest request = new DescribeAutoScalingGroupsRequest().withAutoScalingGroupNames(this.autoScalingGroupName);
 			List<com.amazonaws.services.autoscaling.model.Instance> instances = autoscaling().describeAutoScalingGroups(request).getAutoScalingGroups().get(0).getInstances();
-			Entry<String, List<String>> instancesToUpdate = getEc2InstancesFromAsgInstances(instances);
+			Entry<String,List<InetAddress>> instancesToUpdate = Tools.getEc2InstancesFromAsgInstances(instances);
 			ChangeResourceRecordSetsRequest req;
 			if (instancesToUpdate.getValue().size() == 0)
 				req = createDeleteRequest(instancesToUpdate.getKey()); 
@@ -124,28 +124,10 @@ public class EventHandler {
 				req = createChangeRequest(instancesToUpdate.getValue(), instancesToUpdate.getKey(), Route53Message.getTTL());
 			if (Route53Message.isDebug())
 				log("Sending rr change request: " + req);
-			Tools.waitFor(route53().changeResourceRecordSets(req));
+			DNSTools.waitFor(route53().changeResourceRecordSets(req));
 		} catch (SilentFailure | SdkBaseException e) {
 			log("Silently failing Route53 update: " + e);
 		}
-	}
-
-	private Map.Entry<String,List<String>> getEc2InstancesFromAsgInstances(List<com.amazonaws.services.autoscaling.model.Instance> instances) {
-		List<String> instancesToUpdate = new ArrayList<>();
-		String host = null;
-		for(com.amazonaws.services.autoscaling.model.Instance ins : instances) {
-			if(!ins.getHealthStatus().equals("Healthy"))
-				continue;
-			DescribeInstancesRequest requestEc2 = new DescribeInstancesRequest().withInstanceIds(ins.getInstanceId());
-			if(ec2().describeInstances(requestEc2).getReservations().isEmpty() || ec2().describeInstances(requestEc2).getReservations().get(0).getInstances().isEmpty())
-				continue;
-			com.amazonaws.services.ec2.model.Instance ec2Instance = ec2().describeInstances(requestEc2).getReservations().get(0).getInstances().get(0);
-			if(Objects.nonNull(getIPAddress(ec2Instance)))
-				instancesToUpdate.add(getIPAddress(ec2Instance));
-			if(instancesToUpdate.size()<2)
-				host = getHostAddress(ec2Instance);
-		}
-		return new AbstractMap.SimpleEntry<String,List<String>>(host, instancesToUpdate);
 	}
 
 	/**
@@ -158,11 +140,10 @@ public class EventHandler {
 		try {
 			while (true) {
 				try {
-					Instance i = getInstance(ec2InstanceId);
-					ChangeResourceRecordSetsRequest req = createAddChangeRequest(getIPAddress(i), getHostAddress(i), Route53Message.getTTL());
+					ChangeResourceRecordSetsRequest req = message.createAddRequest(getInstance(ec2InstanceId));
 					if (Route53Message.isDebug())
 						log("Sending rr change request: " + req);
-					Tools.waitFor(route53().changeResourceRecordSets(req));
+					DNSTools.waitFor(route53().changeResourceRecordSets(req));
 				} catch (AmazonRoute53Exception e) {
 					// retry in case of 
 					if (e.getMessage().contains("Rate exceeded")) {
@@ -190,11 +171,10 @@ public class EventHandler {
 		while (true) {
 			try {
 				log("Deregistering " + ec2InstanceId);
-				Instance i = getInstance(ec2InstanceId);
-				ChangeResourceRecordSetsRequest req = createRemoveChangeRequest(getIPAddress(i), getHostAddress(i), Route53Message.getTTL());
+				ChangeResourceRecordSetsRequest req = message.createRemoveRequest(getInstance(ec2InstanceId));
 				if (Route53Message.isDebug())
 					log("Sending rr change request: " + req);
-				Tools.waitFor(route53().changeResourceRecordSets(req));
+				DNSTools.waitFor(route53().changeResourceRecordSets(req));
 			} catch (AmazonRoute53Exception e) {
 				// retry in case of 
 				if (e.getMessage().contains("Rate exceeded")) {
@@ -208,91 +188,8 @@ public class EventHandler {
 			break;
 		}
 	}
-
-	private String getHostAddress(Instance i) {
-		String addr = Route53Message.isPrivate() ? i.getPrivateDnsName() : i.getPublicDnsName();
-		if (Objects.nonNull(addr) && !addr.isEmpty())
-			return addr;
-		return getIPAddress(i);
-	}
-
-	private String getIPAddress(Instance i) {
-		return Route53Message.isPrivate() ? i.getPrivateIpAddress() : i.getPublicIpAddress();
-	}
-
-	/**
-	 * Create a "remove record" request for the specified instance
-	 * @param ip IP Address of the instance to remove from records
-	 * @param addr host name of the instance to remove from records
-	 * @param ttl TTL in seconds to use when creating a new record
-	 * @return record removal request for Route53
-	 * @throws NoIpException 
-	 */
-	private ChangeResourceRecordSetsRequest createRemoveChangeRequest(String ip, String addr, long ttl) throws NoIpException {
-		if (Objects.isNull(ip))
-			throw new NoIpException("Cowardly refusing to remove an instance with no IP address");
-		
-		if (Route53Message.isDebug())
-			log("Removing instance with addresses: " + ip + ", " + addr);
-
-		ChangeResourceRecordSetsRequest req = null;
-		if (message.useDNSRR())
-			req = Tools.getAndRemoveRecord(message.getDNSRR_RECORD().stream().map(hostname -> new SimpleEntry<>(hostname, Arrays.asList(ip))), RRType.A, ttl);
-		if (message.useSRV()) {
-			ChangeResourceRecordSetsRequest srvReq = Tools.getAndRemoveRecord(message.getSRVEntries(addr).entrySet().stream(), RRType.SRV, ttl);
-			if (Objects.isNull(req))
-				req = srvReq;
-			else {
-				// already have a DNS RR change batch in queue, just add our changes
-				ChangeBatch b = req.getChangeBatch();
-				srvReq.getChangeBatch().getChanges().forEach(b::withChanges);
-			}
-		}
-		
-		if (Objects.isNull(req))
-			throw new UnsupportedOperationException(
-					"Please specify either DNSRR_RECORD or SRV_RECORD");
-		return req;
-	}
-
-	/**
-	 * Create a "add record" request for the specified instance
-	 * @param ip IP address of the instance to register
-	 * @param addr host name of the instance to register
-	 * @param ttl TTL in seconds to use when creating a new record
-	 * @return record addition request for Route53
-	 * @throws NoIpException 
-	 */
-	private ChangeResourceRecordSetsRequest createAddChangeRequest(String ip, String addr, long ttl) throws NoIpException {
-		if (Objects.isNull(ip))
-			throw new NoIpException("Cowardly refusing to add an instance with no IP address");
-		
-		if (Route53Message.isDebug())
-			log("Adding instance with addresses: " + ip + ", " + addr);
-		
-		ChangeResourceRecordSetsRequest req = null;
-		if (message.useDNSRR()) {
-			req = Tools.getAndAddRecord(message.getDNSRR_RECORD().stream().map(name -> new SimpleEntry<>(name, Arrays.asList(ip))), RRType.A, ttl);
-		}
-		if (message.useSRV()) {
-			Map<String,List<String>> records = message.getSRVEntries(addr);
-			ChangeResourceRecordSetsRequest srvReq = Tools.getAndAddRecord(records.entrySet().stream(), RRType.SRV, ttl);
-			if (Objects.isNull(req))
-				req = srvReq;
-			else {
-				// already have a DNS RR change batch in queue, just add our changes
-				ChangeBatch b = req.getChangeBatch();
-				srvReq.getChangeBatch().getChanges().forEach(b::withChanges);
-			}
-		}
-		
-		if (Objects.isNull(req))
-			throw new UnsupportedOperationException(
-					"Please specify either DNSRR_RECORD or SRV_RECORD");
-		return req;
-	}
 	
-	private ChangeResourceRecordSetsRequest createChangeRequest(List<String> instances, String addr, long ttl) {
+	private ChangeResourceRecordSetsRequest createChangeRequest(List<InetAddress> list, String addr, long ttl) {
 //		if (Objects.isNull(ip))
 //			throw new SilentFailure("Cowardly refusing to add an instance with no IP address");
 //		if (isDebug())
@@ -300,15 +197,15 @@ public class EventHandler {
 		
 		ChangeResourceRecordSetsRequest req = null;
 		if (message.useDNSRR())
-			req = Tools.createRecordSet(message.getDNSRR_RECORD().stream().map(hostname -> new SimpleEntry<>(hostname, instances)), RRType.A, ttl);
+			req = DNSTools.createRecordSet(message.getDNSRR_RECORD().stream().map(hostname -> new SimpleEntry<>(hostname, list)), RRType.A, ttl);
 		
 		if (message.useSRV()) {
 			Map<String, List<String>> rrsList = message.getSRV_RECORD().stream().flatMap(conf -> {
 				String[] parts = conf.split(":");
-				return instances.stream().map(ip -> Stream.of(parts[0], parts[1], parts[2], ip).collect(Collectors.joining(" ")))
+				return list.stream().map(ip -> Stream.of(parts[0], parts[1], parts[2], ip).collect(Collectors.joining(" ")))
 						.map(s -> new AbstractMap.SimpleEntry<String,String>(parts[3],s));
 			}).collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
-			ChangeResourceRecordSetsRequest srvReq = Tools.createRecordSet(rrsList.entrySet().stream(), RRType.SRV, ttl);
+			ChangeResourceRecordSetsRequest srvReq = DNSTools.createRecordSet(rrsList.entrySet().stream(), RRType.SRV, ttl);
 			if (Objects.isNull(req))
 				req = srvReq;
 			else {
@@ -348,10 +245,6 @@ public class EventHandler {
 				.findFirst()
 				.orElseThrow(() -> new RuntimeException(
 						"Failed to locate instance " + ec2InstanceId));
-	}
-
-	protected void log(String message) {
-		logger.log(message + "\n");
 	}
 
 }

@@ -17,6 +17,8 @@ import com.amazonaws.services.lambda.runtime.events.SNSEvent;
 import com.amazonaws.services.sqs.AmazonSQSClientBuilder;
 import com.amazonaws.services.sqs.model.*;
 
+import tech.greenfield.aws.LoggingObject;
+
 
 public class NotifyRecordsSqs implements RequestHandler<SNSEvent, Route53UpdateResponse>{
 
@@ -29,6 +31,7 @@ public class NotifyRecordsSqs implements RequestHandler<SNSEvent, Route53UpdateR
 
 	@Override
 	public Route53UpdateResponse handleRequest(SNSEvent input, Context context) {
+		LoggingObject.setLogger(context.getLogger());
 		logger.info("Handling sqs request");
 		try {
 			List<Message> messages = new ArrayList<>();

@@ -40,9 +40,9 @@ import com.amazonaws.services.route53.model.ResourceRecordSet;
  *     License along with this library; if not, write to the Free Software
  *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
-public class Tools {
+public class DNSTools {
 	private static final long WAIT_PULSE = 250;
-	private final static Logger logger = Logger.getLogger(Tools.class.getName());
+	private final static Logger logger = Logger.getLogger(DNSTools.class.getName());
 
 	/**
 	 * Wait until the specified change request has been applied on Route53 servers
@@ -112,7 +112,7 @@ public class Tools {
 	 */
 	public static ChangeResourceRecordSetsRequest getAndAddRecord(Stream<Map.Entry<String, List<String>>> mappings, RRType rtype, long ttl) {
 		return rrsetsToChange(mappings.map(record -> {
-			ResourceRecordSet rr = Tools.getRecordSet(record.getKey(), rtype, ttl);
+			ResourceRecordSet rr = DNSTools.getRecordSet(record.getKey(), rtype, ttl);
 			ResourceRecordSet origrr = rr.clone();
 			for (String recordVal : record.getValue())
 				rr.getResourceRecords().add(new ResourceRecord(recordVal));
