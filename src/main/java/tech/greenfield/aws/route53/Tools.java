@@ -110,7 +110,7 @@ public class Tools {
 	 * @param value record to add to the resource record set
 	 * @return Change request that can be submitted to Route53
 	 */
-	public static ChangeResourceRecordSetsRequest getAndAddRecord(Stream<Map.Entry<String, List<String>>> mappings, RRType rtype, long ttl) {
+	public static ChangeBatch getAndAddRecord(Stream<Map.Entry<String, List<String>>> mappings, RRType rtype, long ttl) {
 		return rrsetsToChange(mappings.map(record -> {
 			ResourceRecordSet rr = Tools.getRecordSet(record.getKey(), rtype, ttl);
 			ResourceRecordSet origrr = rr.clone();
@@ -122,7 +122,7 @@ public class Tools {
 		}));
 	}
 	
-	public static ChangeResourceRecordSetsRequest createRecordSet(Stream<Map.Entry<String, List<String>>> mappings, RRType rtype, long ttl) {
+	public static ChangeBatch createRecordSet(Stream<Map.Entry<String, List<String>>> mappings, RRType rtype, long ttl) {
 		List<Change> changes = new ArrayList<Change>();
 		mappings.forEach(entry -> {
 			changes.add(new Change(ChangeAction.DELETE, getRecordSet(entry.getKey(), rtype, ttl)));
@@ -138,7 +138,7 @@ public class Tools {
 			changes.add(new Change(ChangeAction.CREATE, resourceRecordSet));
 //			new ResourceRecordSetChange(getRecordSet(entry.getKey(), rtype, ttl), resourceRecordSet);
 		});
-		return new ChangeResourceRecordSetsRequest(Route53Message.getHostedZoneId(), new ChangeBatch(changes));	
+		return new ChangeBatch(changes);
 	}
 
 	/**
@@ -150,13 +150,12 @@ public class Tools {
 	 * @param value record to match and remove from the resource record set
 	 * @return Change request that can be submitted to Route53
 	 */
-	public static ChangeResourceRecordSetsRequest getAndRemoveRecord(Stream<Map.Entry<String, List<String>>> mappings, RRType rtype, long ttl) {
-		ChangeResourceRecordSetsRequest request = rrsetsToChange(mappings.map(record -> {
+	public static ChangeBatch getAndRemoveRecord(Stream<Map.Entry<String, List<String>>> mappings, RRType rtype, long ttl) {
+		return rrsetsToChange(mappings.map(record -> {
 			ResourceRecordSet origRecord = getRecordSet(record.getKey(), rtype, ttl);
 			ResourceRecordSet update = removeRecord(origRecord, r -> record.getValue().contains(r.getValue()));
 			return new ResourceRecordSetChange(origRecord, update);
 		}));
-		return request;
 	}
 
 	/**
@@ -166,11 +165,10 @@ public class Tools {
 	 * @param rrsets resource record set to "upsert"
 	 * @return Change resource record set request to submit to Route53
 	 */
-	private static ChangeResourceRecordSetsRequest rrsetsToChange(Stream<ResourceRecordSetChange> rrsets) {
-		return new ChangeResourceRecordSetsRequest(Route53Message.getHostedZoneId(),
-				new ChangeBatch(rrsets.map(rr -> rr.removedAll() ? 
+	private static ChangeBatch rrsetsToChange(Stream<ResourceRecordSetChange> rrsets) {
+		return new ChangeBatch(rrsets.map(rr -> rr.removedAll() ? 
 						new Change(ChangeAction.DELETE, rr.oldRRS()) : 
-							new Change(ChangeAction.UPSERT, rr.newRRS())).collect(Collectors.toList())));
+							new Change(ChangeAction.UPSERT, rr.newRRS())).collect(Collectors.toList()));
 	}
 	
 	private static class ResourceRecordSetChange {
