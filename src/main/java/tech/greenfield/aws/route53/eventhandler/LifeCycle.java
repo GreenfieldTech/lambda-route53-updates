@@ -39,11 +39,14 @@ public class LifeCycle extends EventHandler {
 					.withLifecycleActionResult("CONTINUE"));
 		} catch (Throwable e) {
 			log("Error in lifecycle event handlind, abandoning lifecycle with token " + lifecycleActionToken);
-			autoscaling().completeLifecycleAction(new CompleteLifecycleActionRequest()
-					.withAutoScalingGroupName(event.getAutoScalingGroupName())
-					.withLifecycleHookName(event.getLifecycleHookName())
-					.withLifecycleActionToken(lifecycleActionToken)
-					.withLifecycleActionResult("ABANDON"));
+			if (Objects.isNull(lifecycleActionToken))
+				log("Skipping lifecycle completion because there's no token");
+			else
+				autoscaling().completeLifecycleAction(new CompleteLifecycleActionRequest()
+						.withAutoScalingGroupName(event.getAutoScalingGroupName())
+						.withLifecycleHookName(event.getLifecycleHookName())
+						.withLifecycleActionToken(lifecycleActionToken)
+						.withLifecycleActionResult("ABANDON"));
 			throw e;
 		}
 	}
