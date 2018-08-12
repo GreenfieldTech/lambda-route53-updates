@@ -117,6 +117,8 @@ public class EventHandler {
 			DescribeAutoScalingGroupsRequest request = new DescribeAutoScalingGroupsRequest().withAutoScalingGroupNames(this.autoScalingGroupName);
 			List<com.amazonaws.services.autoscaling.model.Instance> instances = autoscaling().describeAutoScalingGroups(request).getAutoScalingGroups().get(0).getInstances();
 			Entry<String, List<String>> instancesToUpdate = getEc2InstancesFromAsgInstances(instances);
+			if (Route53Message.isDebug())
+				logger.log("Updating " + instancesToUpdate.getValue().size() + " for " + instancesToUpdate.getKey() + " - " + instancesToUpdate.getValue());
 			ChangeResourceRecordSetsRequest req;
 			if (instancesToUpdate.getValue().size() == 0)
 				req = createDeleteRequest(instancesToUpdate.getKey()); 
@@ -124,7 +126,8 @@ public class EventHandler {
 				req = createChangeRequest(instancesToUpdate.getValue(), instancesToUpdate.getKey(), Route53Message.getTTL());
 			if (Route53Message.isDebug())
 				log("Sending rr change request: " + req);
-			Tools.waitFor(route53().changeResourceRecordSets(req));
+			if (req.getChangeBatch().getChanges().size() > 0)
+				Tools.waitFor(route53().changeResourceRecordSets(req));
 		} catch (SilentFailure | SdkBaseException e) {
 			log("Silently failing Route53 update: " + e);
 		}
