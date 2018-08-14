@@ -1,24 +1,15 @@
 package tech.greenfield.aws.route53;
 
+import static tech.greenfield.aws.Clients.autoscaling;
+import static tech.greenfield.aws.Clients.ec2;
 import static tech.greenfield.aws.Clients.route53;
 
-import java.util.*;
-import java.util.function.Predicate;
-import java.util.logging.Logger;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
+import java.util.List;
+import java.util.Objects;
 
-import com.amazonaws.services.route53.model.Change;
-import com.amazonaws.services.route53.model.ChangeAction;
-import com.amazonaws.services.route53.model.ChangeBatch;
-import com.amazonaws.services.route53.model.ChangeInfo;
-import com.amazonaws.services.route53.model.ChangeResourceRecordSetsRequest;
-import com.amazonaws.services.route53.model.ChangeResourceRecordSetsResult;
-import com.amazonaws.services.route53.model.GetChangeRequest;
-import com.amazonaws.services.route53.model.ListResourceRecordSetsRequest;
-import com.amazonaws.services.route53.model.RRType;
-import com.amazonaws.services.route53.model.ResourceRecord;
-import com.amazonaws.services.route53.model.ResourceRecordSet;
+import com.amazonaws.services.autoscaling.model.DescribeAutoScalingGroupsRequest;
+import com.amazonaws.services.ec2.model.DescribeInstancesRequest;
+import com.amazonaws.services.route53.model.*;
 
 /**
  * Route53 integration utilities
@@ -42,7 +33,6 @@ import com.amazonaws.services.route53.model.ResourceRecordSet;
  */
 public class Tools {
 	private static final long WAIT_PULSE = 250;
-	private final static Logger logger = Logger.getLogger(Tools.class.getName());
 
 	/**
 	 * Wait until the specified change request has been applied on Route53 servers
@@ -66,10 +56,9 @@ public class Tools {
 	 * requires setting the environment variable HOSTED_ZONE_ID
 	 * @param hostname FQDN of record set to retrieve
 	 * @param type RR type of record to retrieve
-	 * @param ttl TTL in seconds to use if generating an empty record
 	 * @return The record set retrieved from Route53 or an empty record set 
 	 */
-	public static ResourceRecordSet getRecordSet(String hostname, RRType type, long ttl) {
+	public static ResourceRecordSet getRecordSet(String hostname, String type) {
 		if (!hostname.endsWith("."))
 			hostname = hostname + ".";
 		final String domainname = hostname;
@@ -78,119 +67,46 @@ public class Tools {
 				.withStartRecordName(hostname)
 				.withStartRecordType(type)
 				.withMaxItems("1");
-		return route53().listResourceRecordSets(req).getResourceRecordSets().stream()
+		ListResourceRecordSetsResult res = route53().listResourceRecordSets(req);
+		if (Route53Message.isDebug()) 
+			System.err.println("Got recordset for " + hostname + ":" + type +" - " + res);
+		return res.getResourceRecordSets().stream()
 				.filter(rr -> rr.getName().equals(domainname))
-				.findAny().orElse(new ResourceRecordSet(domainname, type)
-						.withTTL(ttl));
+				.filter(rr -> rr.getType().equals(type))
+				.findAny().orElse(null);
 	}
 
-	/**
-	 * Remove a set of records from a record set according to the specified
-	 * predicate.
-	 * @param recordSet Record set to review
-	 * @param predicate predicate to test which records <strong>to remove</strong>
-	 * @return a copy of the original record set with the matching records removed
-	 */
-	public static ResourceRecordSet removeRecord(ResourceRecordSet recordSet,
-			Predicate<ResourceRecord> predicate) {
-		ResourceRecordSet rr = recordSet.clone();
-		rr.setResourceRecords(
-				recordSet.getResourceRecords().stream()
-					.filter(predicate.negate())
-					.collect(Collectors.toList()));
-		return rr;
+	static List<com.amazonaws.services.autoscaling.model.Instance> getASGInstances(String asgName) {
+		return autoscaling()
+				.describeAutoScalingGroups(new DescribeAutoScalingGroupsRequest().withAutoScalingGroupNames(asgName))
+				.getAutoScalingGroups().get(0).getInstances();
 	}
 	
-	/**
-	 * Create a Route53 change request that adds the specified value to the specified
-	 * existing resource record set
-	 * @param hostname FQDN of resource record set to update
-	 * @param rtype RR type of resource record set to update
-	 * @param ttl TTL in seconds to use when creating a new record 
-	 * @param value record to add to the resource record set
-	 * @return Change request that can be submitted to Route53
-	 */
-	public static ChangeBatch getAndAddRecord(Stream<Map.Entry<String, List<String>>> mappings, RRType rtype, long ttl) {
-		return rrsetsToChange(mappings.map(record -> {
-			ResourceRecordSet rr = Tools.getRecordSet(record.getKey(), rtype, ttl);
-			ResourceRecordSet origrr = rr.clone();
-			for (String recordVal : record.getValue())
-				rr.getResourceRecords().add(new ResourceRecord(recordVal));
-			HashSet<ResourceRecord> uniqRRs = new HashSet<>(rr.getResourceRecords());
-			rr.setResourceRecords(uniqRRs);
-			return new ResourceRecordSetChange(origrr, rr);
-		}));
+	static com.amazonaws.services.ec2.model.Instance asInstanceToEC2(
+			com.amazonaws.services.autoscaling.model.Instance instance) {
+		return ec2().describeInstances(new DescribeInstancesRequest().withInstanceIds(instance.getInstanceId()))
+				.getReservations().stream().flatMap(r -> r.getInstances().stream()).findFirst().orElse(null);
+	}
+
+	public static String getHostAddress(com.amazonaws.services.ec2.model.Instance i) throws NoIpException {
+		String addr = Route53Message.isPrivate() ? i.getPrivateDnsName() : i.getPublicDnsName();
+		if (Objects.nonNull(addr) && !addr.isEmpty())
+			return addr;
+		return getIPAddress(i);
+	}
+
+	public static String getIPAddress(com.amazonaws.services.ec2.model.Instance i) throws NoIpException {
+		try {
+			return Objects.requireNonNull(Route53Message.isPrivate() ? i.getPrivateIpAddress() : i.getPublicIpAddress());
+		} catch (NullPointerException e) {
+			throw new NoIpException("Cowardly refusing to add an instance " + i + " with no IP address");
+		}
 	}
 	
-	public static ChangeBatch createRecordSet(Stream<Map.Entry<String, List<String>>> mappings, RRType rtype, long ttl) {
-		List<Change> changes = new ArrayList<Change>();
-		mappings.forEach(entry -> {
-			changes.add(new Change(ChangeAction.DELETE, getRecordSet(entry.getKey(), rtype, ttl)));
-			if (Route53Message.isDebug())
-				logger.info("Updating: " + entry.getKey() + ", with instances: " + Arrays.toString(entry.getValue().toArray()));
-			ResourceRecordSet resourceRecordSet = new ResourceRecordSet(entry.getKey(), rtype);
-			resourceRecordSet.setTTL(ttl);
-			List<ResourceRecord> resourceRecords = new ArrayList<>();
-			entry.getValue().forEach(ip -> {
-				resourceRecords.add(new ResourceRecord(ip)); 
-			});
-			resourceRecordSet.setResourceRecords(resourceRecords);
-			changes.add(new Change(ChangeAction.CREATE, resourceRecordSet));
-//			new ResourceRecordSetChange(getRecordSet(entry.getKey(), rtype, ttl), resourceRecordSet);
-		});
-		return new ChangeBatch(changes);
+	public static String getIPv6Address(com.amazonaws.services.ec2.model.Instance i) {
+		return i.getNetworkInterfaces().stream().flatMap(in -> in.getIpv6Addresses().stream()).findFirst()
+				.map(addr -> addr.getIpv6Address()).orElse(null);
 	}
 
-	/**
-	 * Create a Route53 change request that removes the specified value to the specified
-	 * existing resource record set
-	 * @param hostnames FQDNs of resource record set to update
-	 * @param rtype RR type of resource record set to update
-	 * @param ttl TTL in seconds to use when creating a new record
-	 * @param value record to match and remove from the resource record set
-	 * @return Change request that can be submitted to Route53
-	 */
-	public static ChangeBatch getAndRemoveRecord(Stream<Map.Entry<String, List<String>>> mappings, RRType rtype, long ttl) {
-		return rrsetsToChange(mappings.map(record -> {
-			ResourceRecordSet origRecord = getRecordSet(record.getKey(), rtype, ttl);
-			ResourceRecordSet update = removeRecord(origRecord, r -> record.getValue().contains(r.getValue()));
-			return new ResourceRecordSetChange(origRecord, update);
-		}));
-	}
-
-	/**
-	 * Create an UPSERT {@link ChangeResourceRecordSetsRequest} from a resource record set
-	 * This method relies on {@link Response#getHostedZoneId()} which
-	 * requires setting the environment variable HOSTED_ZONE_ID
-	 * @param rrsets resource record set to "upsert"
-	 * @return Change resource record set request to submit to Route53
-	 */
-	private static ChangeBatch rrsetsToChange(Stream<ResourceRecordSetChange> rrsets) {
-		return new ChangeBatch(rrsets.map(rr -> rr.removedAll() ? 
-						new Change(ChangeAction.DELETE, rr.oldRRS()) : 
-							new Change(ChangeAction.UPSERT, rr.newRRS())).collect(Collectors.toList()));
-	}
-	
-	private static class ResourceRecordSetChange {
-		private ResourceRecordSet oldset;
-		private ResourceRecordSet newset;
-
-		public ResourceRecordSetChange(ResourceRecordSet oldset, ResourceRecordSet newset) {
-			this.oldset = oldset;
-			this.newset = newset;
-		}
-
-		public ResourceRecordSet newRRS() {
-			return newset;
-		}
-
-		public ResourceRecordSet oldRRS() {
-			return oldset;
-		}
-
-		public boolean removedAll() {
-			return newset.getResourceRecords().isEmpty();
-		}
-	}
 
 }

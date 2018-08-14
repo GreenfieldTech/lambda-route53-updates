@@ -1,6 +1,6 @@
 package tech.greenfield.aws.route53;
 
-public class NoIpException extends Exception {
+public class NoIpException extends RuntimeException {
 
 	private static final long serialVersionUID = 1L;
 

@@ -7,17 +7,52 @@ import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import com.amazonaws.services.ec2.model.Instance;
 import com.amazonaws.services.lambda.runtime.events.SNSEvent.SNSRecord;
+import com.amazonaws.services.route53.model.*;
 import com.amazonaws.services.sqs.model.Message;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-public class Route53Message{
+public class Route53Message {
+	
+	public static class SRVTemplate {
+		private String prio;
+		private String weight;
+		private String port;
+		private String addr;
+		
+		public SRVTemplate(String rec) {
+			String[] fields = rec.split(":");
+			if (fields.length != 4)
+				throw new InvalidInputException("SRV template '" + rec + "' is invalid");
+			prio = fields[0];
+			weight = fields[1];
+			port = fields[2];
+			addr = fields[3];
+		}
+		public static List<SRVTemplate> parse(List<String> record) {
+			return record.stream().map(SRVTemplate::new).collect(Collectors.toList());
+		}
+		public ResourceRecord getResourceRecord(Instance i) throws NoIpException {
+			return getResourceRecord(Tools.getHostAddress(i));
+		}
+		public ResourceRecord getResourceRecord(String ip) {
+			return new ResourceRecord(String.join(" ", new String[]{
+					prio, weight, port, ip
+				}));
+		}
+		public String toString() {
+			return String.join(":", new String[] {
+					prio, weight, port, addr
+			});
+		}
+	}
 	
 	private Message message;
 	private Map<String, Object> body;
 	private Metadata metadata;
-	private List<String> SRV_RECORD;
+	private List<SRVTemplate> SRV_RECORD;
 	private List<String> DNSRR_RECORD;
 	static private ObjectMapper s_mapper = new ObjectMapper();
 	private final static Logger logger = Logger.getLogger(NotifyRecordsSqs.class.getName());
@@ -37,7 +72,7 @@ public class Route53Message{
 				throw new IOException("No metadata was sent");
 			String metadataStr = body.get("NotificationMetadata").toString();
 			metadata = s_mapper.readValue(metadataStr, Metadata.class);
-			this.SRV_RECORD = metadata.getSRV_RECORD();
+			this.SRV_RECORD = SRVTemplate.parse(metadata.getSRV_RECORD());
 			this.DNSRR_RECORD = metadata.getDNSRR_RECORD();
 		} catch (IOException e) {
 			e.printStackTrace();
@@ -53,7 +88,7 @@ public class Route53Message{
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
-		this.SRV_RECORD = getEnvByPrefix("SRV_RECORD");
+		this.SRV_RECORD = SRVTemplate.parse(getEnvByPrefix("SRV_RECORD"));
 		this.DNSRR_RECORD = getEnvByPrefix("DNSRR_RECORD");
 		if(Route53Message.isDebug())
 			logger.info("SRV_RECORD: " + this.SRV_RECORD + " DNSRR_RECORD: " + this.DNSRR_RECORD);
@@ -86,7 +121,7 @@ public class Route53Message{
 		return body;
 	}
 	
-	public List<String> getSRV_RECORD() {
+	public List<SRVTemplate> getSRV_RECORD() {
 		return SRV_RECORD;
 	}
 	
@@ -117,12 +152,7 @@ public class Route53Message{
 	 */
 	public Map<String,List<String>> getSRVEntries(String hostname) {
 		return getSRV_RECORD().stream().map(var -> {
-			if (Objects.isNull(var) || var.isEmpty())
-				throw new UnsupportedOperationException("Cannot construct SRV record without SRV_RECORD environment variable");
-			String[] parts = var.split(":");
-			if (parts.length != 4)
-				throw new UnsupportedOperationException("Invalid SRV_RECORD format - " + "must conform to format '<priority>:<weight>:<port>:<name>'. currently is: " + var + " of length: " + parts.length);
-			return new AbstractMap.SimpleEntry<String,String>(parts[3], Stream.of(parts[0], parts[1],parts[2],hostname).collect(Collectors.joining(" ")));
+			return new AbstractMap.SimpleEntry<String,String>(var.addr, Stream.of(var.prio, var.weight,var.port,hostname).collect(Collectors.joining(" ")));
 		}).collect(Collectors.groupingBy(SimpleEntry::getKey, Collectors.mapping(SimpleEntry::getValue, Collectors.toList())));
 	}
 	
@@ -172,6 +202,124 @@ public class Route53Message{
 	public static boolean isDebug() {
 		return Objects.nonNull(System.getenv("DEBUG")) && !System.getenv("DEBUG").isEmpty();
 	}
+
+	public ChangeBatch getDeleteChanges() {
+		ChangeBatch out = new ChangeBatch();
+		if (useDNSRR())
+			out.getChanges().addAll(getDNSRRDeleteChanges());
+		if (useSRV())
+			out.getChanges().addAll(getSRVDeleteChanges());
+		return out;
+	}
+
+	private List<Change> getDNSRRDeleteChanges() {
+		return DNSRR_RECORD.stream()
+				.flatMap(addr -> Stream.of(RRType.A, RRType.AAAA).map(r -> new ResourceRecordSet(addr, r)))
+				.map(rr -> new Change(ChangeAction.DELETE, rr))
+				.collect(Collectors.toList());
+	}
 	
+	private List<Change> getSRVDeleteChanges() {
+		return SRV_RECORD.stream()
+				.map(s -> new ResourceRecordSet(s.addr, RRType.SRV))
+				.map(rr -> new Change(ChangeAction.DELETE, rr))
+				.collect(Collectors.toList());
+	}
+
+	public ChangeBatch getUpsertChanges(List<Instance> instances) throws NoIpException {
+		return getUpsertChanges(instances.toArray(new Instance[] {}));
+	}
+	
+	public ChangeBatch getUpsertChanges(Instance... instances) throws NoIpException {
+		ChangeBatch out = new ChangeBatch();
+		if (useDNSRR())
+			for (Instance i : instances)
+				out.getChanges().addAll(getDNSRRUpsertChanges(i));
+		if (useSRV())
+			for (Instance i : instances)
+				out.getChanges().addAll(getSRVUpsertChanges(i));
+		return out;
+	}
+
+	private List<Change> getDNSRRUpsertChanges(Instance i) throws NoIpException {
+		String ipv4ip = Tools.getIPAddress(i);
+		String ipv6ip = Tools.getIPv6Address(i);
+		return DNSRR_RECORD.stream()
+				.flatMap(addr -> {
+					ResourceRecordSet ipv4 = new ResourceRecordSet().withType(RRType.A).withName(addr)
+							.withTTL(getTTL()).withResourceRecords(new ResourceRecord(ipv4ip));
+					return Objects.isNull(ipv6ip) ? Stream.of(ipv4) : 
+						Stream.of(ipv4, new ResourceRecordSet().withType(RRType.AAAA).withName(addr)
+								.withTTL(getTTL()).withResourceRecords(new ResourceRecord(ipv6ip)));
+				})
+				.map(rr -> new Change(ChangeAction.UPSERT, rr))
+				.collect(Collectors.toList());
+	}
+	
+	private List<Change> getSRVUpsertChanges(Instance i) throws NoIpException {
+		return SRV_RECORD.stream()
+				.map(s -> new ResourceRecordSet().withType(RRType.SRV).withName(s.addr)
+						.withTTL(getTTL()).withResourceRecords(s.getResourceRecord(i)))
+				.map(rr -> new Change(ChangeAction.UPSERT, rr))
+				.collect(Collectors.toList());
+	}
+
+	public ChangeBatch getRemoveChanges(Instance i) throws NoIpException {
+		ChangeBatch out = new ChangeBatch();
+		if (useDNSRR()) {
+			out.getChanges().addAll(getDNSRR4RemoveChanges(i));
+			out.getChanges().addAll(getDNSRR6RemoveChanges(i));
+		}
+		if (useSRV())
+			out.getChanges().addAll(getSRVRemoveChanges(i));
+		return out;
+	}
+	
+	private List<Change> getDNSRR4RemoveChanges(Instance i) throws NoIpException {
+		String ip = Tools.getIPAddress(i);
+		return DNSRR_RECORD.stream()
+				.map(s -> Tools.getRecordSet(s, RRType.A.toString()))
+				.filter(Objects::nonNull)
+				.map(rr -> {
+					if (Objects.isNull(rr))
+						return null;
+					if (rr.getResourceRecords().size() == 1 && rr.getResourceRecords().get(0).getValue().equals(ip))
+						return new Change(ChangeAction.DELETE, rr);
+					rr.getResourceRecords().removeIf(r -> r.getValue().equals(ip));
+					return new Change(ChangeAction.UPSERT, rr);
+				})
+				.collect(Collectors.toList());
+	}
+	
+	private List<Change> getDNSRR6RemoveChanges(Instance i) throws NoIpException {
+		String ip = Tools.getIPv6Address(i);
+		return DNSRR_RECORD.stream()
+				.map(s -> Tools.getRecordSet(s, RRType.AAAA.toString()))
+				.filter(Objects::nonNull)
+				.map(rr -> {
+					if (rr.getResourceRecords().size() == 1 && rr.getResourceRecords().get(0).getValue().equals(ip))
+						return new Change(ChangeAction.DELETE, rr);
+					rr.getResourceRecords().removeIf(r -> r.getValue().equals(ip));
+					return new Change(ChangeAction.UPSERT, rr);
+				})
+				.collect(Collectors.toList());
+	}
+	
+	private List<Change> getSRVRemoveChanges(Instance i) throws NoIpException {
+		String host = Tools.getHostAddress(i);
+		return SRV_RECORD.stream()
+				.map(s -> {
+					ResourceRecord rec = s.getResourceRecord(host);
+					ResourceRecordSet rr = Tools.getRecordSet(s.addr, RRType.SRV.toString());
+					if (Objects.isNull(rr))
+						return null;
+					if (rr.getResourceRecords().size() == 1 && rr.getResourceRecords().get(0).equals(rec))
+						return new Change(ChangeAction.DELETE, rr);
+					rr.getResourceRecords().remove(rec);
+					return new Change(ChangeAction.UPSERT, rr);
+				})
+				.filter(Objects::nonNull)
+				.collect(Collectors.toList());
+	}
 	
 }
