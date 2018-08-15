@@ -30,6 +30,8 @@ public class Route53Message {
 			weight = fields[1];
 			port = fields[2];
 			addr = fields[3];
+			if (!addr.endsWith("."))
+				addr += ".";
 		}
 		public static List<SRVTemplate> parse(List<String> record) {
 			return record.stream().map(SRVTemplate::new).collect(Collectors.toList());
@@ -73,7 +75,8 @@ public class Route53Message {
 			String metadataStr = body.get("NotificationMetadata").toString();
 			metadata = s_mapper.readValue(metadataStr, Metadata.class);
 			this.SRV_RECORD = SRVTemplate.parse(metadata.getSRV_RECORD());
-			this.DNSRR_RECORD = metadata.getDNSRR_RECORD();
+			this.DNSRR_RECORD = metadata.getDNSRR_RECORD().stream().map(addr -> 
+					addr.endsWith(".") ? addr : (addr + ".")).collect(Collectors.toList());
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
