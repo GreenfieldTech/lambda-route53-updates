@@ -134,7 +134,8 @@ public class EventHandler {
 		if (Route53Message.isDebug())
 			log("Sending DNS change request: " + changes);
 		try {
-			Tools.waitFor(route53().changeResourceRecordSets(new ChangeResourceRecordSetsRequest().withChangeBatch(changes)));
+			ChangeResourceRecordSetsRequest req = new ChangeResourceRecordSetsRequest(Route53Message.getHostedZoneId(), changes);
+			Tools.waitFor(route53().changeResourceRecordSets(req));
 		} catch (IllegalArgumentException e) {
 			log("Error in submitting Route53 update",e);
 			throw new SdkBaseException(e);
