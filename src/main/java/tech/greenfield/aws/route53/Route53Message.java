@@ -49,6 +49,9 @@ public class Route53Message {
 					prio, weight, port, addr
 			});
 		}
+		public String getAddr() {
+			return addr;
+		}
 	}
 	
 	private Message message;
@@ -260,9 +263,27 @@ public class Route53Message {
 	}
 	
 	private List<Change> getSRVUpsertChanges(Instance i) throws NoIpException {
-		return SRV_RECORD.stream()
-				.map(s -> new ResourceRecordSet().withType(RRType.SRV).withName(s.addr)
-						.withTTL(getTTL()).withResourceRecords(s.getResourceRecord(i)))
+		HashMap<String, List<SRVTemplate>> map = new HashMap<String, List<SRVTemplate>>() {
+			private static final long serialVersionUID = 1L;
+
+			public List<SRVTemplate> get(Object key) {
+				if (containsKey(key))
+					return super.get(key);
+				ArrayList<SRVTemplate> list = new ArrayList<SRVTemplate>();
+				put(key.toString(),list);
+				return list;
+			}
+		};
+		for (SRVTemplate s : SRV_RECORD)
+			map.get(s.addr).add(s);
+		
+		return map.entrySet().stream()
+				.map(ent -> 
+					new ResourceRecordSet().withType(RRType.SRV).withName(ent.getKey())
+						.withTTL(getTTL()).withResourceRecords(
+								ent.getValue().stream().map(s -> s.getResourceRecord(i)).collect(Collectors.toList())
+								)
+				)
 				.map(rr -> new Change(ChangeAction.UPSERT, rr))
 				.collect(Collectors.toList());
 	}
@@ -310,15 +331,30 @@ public class Route53Message {
 	
 	private List<Change> getSRVRemoveChanges(Instance i) throws NoIpException {
 		String host = Tools.getHostAddress(i);
-		return SRV_RECORD.stream()
-				.map(s -> {
-					ResourceRecord rec = s.getResourceRecord(host);
-					ResourceRecordSet rr = Tools.getRecordSet(s.addr, RRType.SRV.toString());
+		HashMap<String, List<SRVTemplate>> map = new HashMap<String, List<SRVTemplate>>() {
+			private static final long serialVersionUID = 1L;
+
+			public List<SRVTemplate> get(Object key) {
+				if (containsKey(key))
+					return super.get(key);
+				ArrayList<SRVTemplate> list = new ArrayList<SRVTemplate>();
+				put(key.toString(),list);
+				return list;
+			}
+		};
+		for (SRVTemplate s : SRV_RECORD)
+			map.get(s.addr).add(s);
+		return map.entrySet().stream()
+				.map(ent -> {
+					ResourceRecordSet rr = Tools.getRecordSet(ent.getKey(), RRType.SRV.toString());
 					if (Objects.isNull(rr))
 						return null;
-					if (rr.getResourceRecords().size() == 1 && rr.getResourceRecords().get(0).equals(rec))
+					ArrayList<ResourceRecord> newRRs = new ArrayList<>(rr.getResourceRecords());
+					for (SRVTemplate s : ent.getValue())
+						newRRs.remove(s.getResourceRecord(host));
+					if (newRRs.isEmpty())
 						return new Change(ChangeAction.DELETE, rr);
-					rr.getResourceRecords().remove(rec);
+					rr.setResourceRecords(newRRs);
 					return new Change(ChangeAction.UPSERT, rr);
 				})
 				.filter(Objects::nonNull)
