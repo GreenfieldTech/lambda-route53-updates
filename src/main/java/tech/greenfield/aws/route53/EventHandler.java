@@ -3,6 +3,8 @@ package tech.greenfield.aws.route53;
 import static tech.greenfield.aws.Clients.ec2;
 import static tech.greenfield.aws.Clients.route53;
 
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -131,7 +133,12 @@ public class EventHandler {
 		ChangeBatch changes = instances.isEmpty() ? message.getDeleteChanges() : message.getUpsertChanges(instances);
 		if (Route53Message.isDebug())
 			log("Sending DNS change request: " + changes);
-		Tools.waitFor(route53().changeResourceRecordSets(new ChangeResourceRecordSetsRequest().withChangeBatch(changes)));
+		try {
+			Tools.waitFor(route53().changeResourceRecordSets(new ChangeResourceRecordSetsRequest().withChangeBatch(changes)));
+		} catch (IllegalArgumentException e) {
+			log("Error in submitting Route53 update",e);
+			throw new SdkBaseException(e);
+		}
 	}
 
 	/**
@@ -217,4 +224,9 @@ public class EventHandler {
 		logger.log(message + "\n");
 	}
 
+	private void log(String string, Exception e) {
+		StringWriter sw = new StringWriter();
+		e.printStackTrace(new PrintWriter(sw));
+		logger.log(message + "\nCAused by:\n" + sw.toString());
+	}
 }
