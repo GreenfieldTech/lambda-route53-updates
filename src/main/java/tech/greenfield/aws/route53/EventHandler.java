@@ -211,7 +211,7 @@ public class EventHandler {
 				// retry in case of 
 				if (e.getMessage().contains("Rate exceeded")) {
 					try {
-						wait(1000);
+						Thread.sleep(2000);
 						log("Retrying...");
 					} catch (InterruptedException e1) { }
 					continue;
