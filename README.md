@@ -65,14 +65,18 @@ The lambda function reads the following environment variables:
 
  * `HOSTED_ZONE_ID` - specify the Route53 Hosted Zone identifier, as can be found from the Route53 console. Required.
  * `DNSRR_RECORD` - specify the fully qualified domain name (with or without a terminating dot) that you want the lambda to update.
-   Optional - either this setting and/or the `SRV_RECORD` setting must be specified.
+   Optional - either one of the `DNSRR` setting and/or one of the `SRV` setting must be specified.
+ * `DNSRR4_RECORD` - same as `DNSRR_RECORD`, but will only create an IPv4 `A` records (if the instance has an IPv4 address)
+   Optional - either one of the `DNSRR` setting and/or one of the `SRV` setting must be specified.
+ * `DNSRR_RECORD` - same as `DNSRR_RECORD`, but will only create an IPv6 `AAAA` records (if the instance has an IPv6 address)
+   Optional - either one of the `DNSRR` setting and/or one of the `SRV` setting must be specified.
  * `SRV_RECORD` - specify the fully qualified domain name (with or without a terminating dot) that you want the lambda to update,
    including the required priority, weight and port (currently we assume these all to be set identically for all records). This
-   setting requires a specific format to be used - a colon delimited list in the following format: 
+   setting requires a specific format to be used - a colon delimited list in the following format:
 ```
 <priority>:<weight>:<port>:<fqdn>
 ```
-   Optional - either this setting and/or the `DNSRR_RECORD` setting must be specified.
+   Optional - either this setting and/or one of the `DNSRR` settings must be specified.
  * `TTL` - specify a TTL in seconds to be set for new records created by lambda-route53-updates. If not specified defaults to 300.
  * `PRIVATE` - configure lambda-route53-updates to use the instances local (private) addresses when setting up DNS records, instead of
    public addresses. This is useful for implementing a split-horizon DNS setup, where you want to configure an additional lambda
