@@ -11,6 +11,7 @@ import com.amazonaws.services.ec2.model.Instance;
 import com.amazonaws.services.lambda.runtime.events.SNSEvent.SNSRecord;
 import com.amazonaws.services.route53.model.*;
 import com.amazonaws.services.sqs.model.Message;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -65,6 +66,7 @@ public class Route53Message {
 
 	static {
 		s_mapper.configure(MapperFeature.ACCEPT_CASE_INSENSITIVE_PROPERTIES, true);
+		s_mapper.configure(DeserializationFeature.ACCEPT_SINGLE_VALUE_AS_ARRAY, true);
 	}
 	
 	public Route53Message(Message sqs) {
