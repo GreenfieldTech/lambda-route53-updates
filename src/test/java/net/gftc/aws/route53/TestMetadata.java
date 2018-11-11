@@ -65,5 +65,87 @@ public class TestMetadata {
 		assertEquals("1:1:5060:_sip._udp.subscribers.cloudonix.io", records.get(0));
 		assertEquals("1:1:5061:_sip._udp.subscribers.us-east-2.cloudonix.io", records.get(3));
 	}
+	
+	@Test
+	public void testSingleRR4() throws JsonParseException, JsonMappingException, IOException {
+		String text = "{\"DNSRR4_RECORD\":\"subscribers.cloudonix.io\"}";
+		Metadata metadata = s_mapper.readValue(text, Metadata.class);
+		List<String> records = metadata.getDNSRR4_RECORD();
+		assertEquals(1, records.size());
+		assertEquals("subscribers.cloudonix.io", records.get(0));
+	}
+
+	@Test
+	public void testMultipleRR4() throws JsonParseException, JsonMappingException, IOException {
+		String text = "{\"DNSRR4_RECORD\":[\"subscribers.cloudonix.io\",\"subscribers.us-east-2.cloudonix.io\"]}";
+		Metadata metadata = s_mapper.readValue(text, Metadata.class);
+		List<String> records = metadata.getDNSRR4_RECORD();
+		assertEquals(2, records.size());
+		assertEquals("subscribers.cloudonix.io", records.get(0));
+		assertEquals("subscribers.us-east-2.cloudonix.io", records.get(1));
+	}
+
+	@Test
+	public void testSingleSRV4() throws JsonParseException, JsonMappingException, IOException {
+		String text = "{\"SRV4_RECORD\":\"1:1:5060:_sip._udp.subscribers.cloudonix.io\"}";
+		Metadata metadata = s_mapper.readValue(text, Metadata.class);
+		List<String> records = metadata.getSRV4_RECORD();
+		assertEquals(1, records.size());
+		assertEquals("1:1:5060:_sip._udp.subscribers.cloudonix.io", records.get(0));
+	}
+
+	@Test
+	public void testMultipleSRV4() throws JsonParseException, JsonMappingException, IOException {
+		String text = "{\"SRV4_RECORD\":[\"1:1:5060:_sip._udp.subscribers.cloudonix.io\","
+				+ "\"1:1:5060:_sip._udp.subscribers.us-east-2.cloudonix.io\","
+				+ "\"1:1:5061:_sip._udp.subscribers.cloudonix.io\","
+				+ "\"1:1:5061:_sip._udp.subscribers.us-east-2.cloudonix.io\"]}";
+		Metadata metadata = s_mapper.readValue(text, Metadata.class);
+		List<String> records = metadata.getSRV4_RECORD();
+		assertEquals(4, records.size());
+		assertEquals("1:1:5060:_sip._udp.subscribers.cloudonix.io", records.get(0));
+		assertEquals("1:1:5061:_sip._udp.subscribers.us-east-2.cloudonix.io", records.get(3));
+	}
+	
+	@Test
+	public void testSingleRR6() throws JsonParseException, JsonMappingException, IOException {
+		String text = "{\"DNSRR6_RECORD\":\"subscribers.cloudonix.io\"}";
+		Metadata metadata = s_mapper.readValue(text, Metadata.class);
+		List<String> records = metadata.getDNSRR6_RECORD();
+		assertEquals(1, records.size());
+		assertEquals("subscribers.cloudonix.io", records.get(0));
+	}
+
+	@Test
+	public void testMultipleRR6() throws JsonParseException, JsonMappingException, IOException {
+		String text = "{\"DNSRR6_RECORD\":[\"subscribers.cloudonix.io\",\"subscribers.us-east-2.cloudonix.io\"]}";
+		Metadata metadata = s_mapper.readValue(text, Metadata.class);
+		List<String> records = metadata.getDNSRR6_RECORD();
+		assertEquals(2, records.size());
+		assertEquals("subscribers.cloudonix.io", records.get(0));
+		assertEquals("subscribers.us-east-2.cloudonix.io", records.get(1));
+	}
+
+	@Test
+	public void testSingleSRV6() throws JsonParseException, JsonMappingException, IOException {
+		String text = "{\"SRV6_RECORD\":\"1:1:5060:_sip._udp.subscribers.cloudonix.io\"}";
+		Metadata metadata = s_mapper.readValue(text, Metadata.class);
+		List<String> records = metadata.getSRV6_RECORD();
+		assertEquals(1, records.size());
+		assertEquals("1:1:5060:_sip._udp.subscribers.cloudonix.io", records.get(0));
+	}
+
+	@Test
+	public void testMultipleSRV6() throws JsonParseException, JsonMappingException, IOException {
+		String text = "{\"SRV6_RECORD\":[\"1:1:5060:_sip._udp.subscribers.cloudonix.io\","
+				+ "\"1:1:5060:_sip._udp.subscribers.us-east-2.cloudonix.io\","
+				+ "\"1:1:5061:_sip._udp.subscribers.cloudonix.io\","
+				+ "\"1:1:5061:_sip._udp.subscribers.us-east-2.cloudonix.io\"]}";
+		Metadata metadata = s_mapper.readValue(text, Metadata.class);
+		List<String> records = metadata.getSRV6_RECORD();
+		assertEquals(4, records.size());
+		assertEquals("1:1:5060:_sip._udp.subscribers.cloudonix.io", records.get(0));
+		assertEquals("1:1:5061:_sip._udp.subscribers.us-east-2.cloudonix.io", records.get(3));
+	}
 
 }
