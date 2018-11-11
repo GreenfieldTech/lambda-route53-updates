@@ -199,7 +199,7 @@ public class Route53Message {
 					.map(addr -> new ResourceRecordSet().withType(RRType.A).withName(addr)
 							.withTTL(getTTL()).withResourceRecords(new ResourceRecord(ipv4ip))));
 		if (Objects.nonNull(ipv6ip))
-			addrs = Stream.concat(addrs, Stream.concat(metadata.getRRSpec().stream(), metadata.getRR4Spec().stream())
+			addrs = Stream.concat(addrs, Stream.concat(metadata.getRRSpec().stream(), metadata.getRR6Spec().stream())
 					.map(addr -> new ResourceRecordSet().withType(RRType.AAAA).withName(addr)
 							.withTTL(getTTL()).withResourceRecords(new ResourceRecord(ipv6ip))));
 		return addrs
