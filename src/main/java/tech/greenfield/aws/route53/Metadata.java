@@ -7,12 +7,10 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class Metadata {
 	
-	private List<String> SRV_RECORD;
-	private List<String> DNSRR_RECORD;
+	private List<String> SRV_RECORD = Collections.emptyList();
+	private List<String> DNSRR_RECORD = Collections.emptyList();
 
 	public List<String> getSRV_RECORD() {
-		if(Objects.isNull(SRV_RECORD))
-			return Collections.emptyList();
 		return SRV_RECORD;
 	}
 	
@@ -21,8 +19,6 @@ public class Metadata {
 	}
 	
 	public List<String> getDNSRR_RECORD() {
-		if(Objects.isNull(DNSRR_RECORD))
-			return Collections.emptyList();
 		return DNSRR_RECORD;
 	}
 	public void setDNSRR_RECORD(List<String> dNSRR_RECORD) {
