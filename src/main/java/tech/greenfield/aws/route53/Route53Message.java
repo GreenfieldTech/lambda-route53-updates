@@ -2,7 +2,6 @@ package tech.greenfield.aws.route53;
 
 import java.io.IOException;
 import java.util.*;
-import java.util.AbstractMap.SimpleEntry;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -17,49 +16,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 public class Route53Message {
 	
-	public static class SRVTemplate {
-		private String prio;
-		private String weight;
-		private String port;
-		private String addr;
-		
-		public SRVTemplate(String rec) {
-			String[] fields = rec.split(":");
-			if (fields.length != 4)
-				throw new InvalidInputException("SRV template '" + rec + "' is invalid");
-			prio = fields[0];
-			weight = fields[1];
-			port = fields[2];
-			addr = fields[3];
-			if (!addr.endsWith("."))
-				addr += ".";
-		}
-		public static List<SRVTemplate> parse(List<String> record) {
-			return record.stream().map(SRVTemplate::new).collect(Collectors.toList());
-		}
-		public ResourceRecord getResourceRecord(Instance i) throws NoIpException {
-			return getResourceRecord(Tools.getHostAddress(i));
-		}
-		public ResourceRecord getResourceRecord(String ip) {
-			return new ResourceRecord(String.join(" ", new String[]{
-					prio, weight, port, ip
-				}));
-		}
-		public String toString() {
-			return String.join(":", new String[] {
-					prio, weight, port, addr
-			});
-		}
-		public String getAddr() {
-			return addr;
-		}
-	}
-	
 	private Message message;
 	private Map<String, Object> body;
 	private Metadata metadata;
-	private List<SRVTemplate> SRV_RECORD;
-	private List<String> DNSRR_RECORD;
 	static private ObjectMapper s_mapper = new ObjectMapper();
 	private final static Logger logger = Logger.getLogger(NotifyRecordsSqs.class.getName());
 	private static final long DEFAULT_TTL = 300;
@@ -79,14 +38,10 @@ public class Route53Message {
 				throw new IOException("No metadata was sent");
 			String metadataStr = body.get("NotificationMetadata").toString();
 			metadata = s_mapper.readValue(metadataStr, Metadata.class);
-			this.SRV_RECORD = SRVTemplate.parse(metadata.getSRV_RECORD());
-			this.DNSRR_RECORD = metadata.getDNSRR_RECORD().stream().map(addr -> 
-					addr.endsWith(".") ? addr : (addr + ".")).collect(Collectors.toList());
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
-		if(Route53Message.isDebug())
-			logger.info("SRV_RECORD: " + this.SRV_RECORD + ", DNSRR_RECORD: " + this.DNSRR_RECORD);
+		if(Route53Message.isDebug()) dumpConfiguration();
 	}
 	
 	@SuppressWarnings("unchecked")
@@ -96,22 +51,20 @@ public class Route53Message {
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
-		this.SRV_RECORD = SRVTemplate.parse(getEnvByPrefix("SRV_RECORD"));
-		this.DNSRR_RECORD = getEnvByPrefix("DNSRR_RECORD");
+		metadata = Metadata.fromEnvironment();
 		if(Route53Message.isDebug())
-			logger.info("SRV_RECORD: " + this.SRV_RECORD + " DNSRR_RECORD: " + this.DNSRR_RECORD);
+			dumpConfiguration();
 	}
 	
-	/**
-	 * Retrieve all environment values whose keys start with the specified prefix
-	 * @param prefix environment variable name prefix
-	 * @return List of environment values
-	 */
-	private static List<String> getEnvByPrefix(String prefix) {
-		return System.getenv().entrySet().stream().filter(e -> e.getKey().startsWith(prefix))
-				.map(e -> e.getValue()).collect(Collectors.toList());
+	private void dumpConfiguration() {
+		logger.info("SRV_RECORD: " + metadata.getSRVSpec());
+		logger.info("SRV4_RECORD: " + metadata.getSRV4Spec());
+		logger.info("SRV6_RECORD: " + metadata.getSRV6Spec());
+		logger.info("DNSRR_RECORD: " + metadata.getRRSpec());
+		logger.info("DNSRR4_RECORD: " + metadata.getRR4Spec());
+		logger.info("DNSRR6_RECORD: " + metadata.getRR6Spec());
 	}
-	
+
 	@SuppressWarnings("unchecked")
 	public Map<String, Object> retreiveBody(){
 		String sqsMessageText = this.message.getBody();
@@ -129,39 +82,17 @@ public class Route53Message {
 		return body;
 	}
 	
-	public List<SRVTemplate> getSRV_RECORD() {
-		return SRV_RECORD;
-	}
-	
-	public List<String> getDNSRR_RECORD() {
-		return DNSRR_RECORD;
-	}
-
 	public Message getMessage() {
 		return message;
 	}
 	
 	/**
-	 * Check if SRV record update was requested by specifying the SRV_RECORD environemtn variable
+	 * Check if SRV record update was requested by specifying the SRV_RECORD environment variable
 	 * This setting is mandatory if DNSRR_RECORD is not set
 	 * @return true if SRV record update is requested
 	 */
 	public boolean useSRV() {
-		return (Objects.nonNull(getSRV_RECORD()) && !getSRV_RECORD().isEmpty());
-	}
-	
-	/**
-	 * Format and retrieve the SRV record and FQDN that need to be updated
-	 * This setting is mandatory if DNSRR_RECORD is not set
-	 * @param hostname FQDN for which to generate an SRV record using the schema
-	 * 	specified by the SRV_RECORD environment variable
-	 * @return A pair where the key is the FQDN to update and the value is the
-	 * 	record set to update (add or remove a record)
-	 */
-	public Map<String,List<String>> getSRVEntries(String hostname) {
-		return getSRV_RECORD().stream().map(var -> {
-			return new AbstractMap.SimpleEntry<String,String>(var.addr, Stream.of(var.prio, var.weight,var.port,hostname).collect(Collectors.joining(" ")));
-		}).collect(Collectors.groupingBy(SimpleEntry::getKey, Collectors.mapping(SimpleEntry::getValue, Collectors.toList())));
+		return metadata.hasSRV();
 	}
 	
 	/**
@@ -171,7 +102,7 @@ public class Route53Message {
 	 * @return true if DNS round-robin record update is requested
 	 */
 	public boolean useDNSRR() {
-		return !getDNSRR_RECORD().isEmpty();
+		return metadata.hasDNSRR();
 	}
 	
 	public static long getTTL() {
@@ -221,15 +152,25 @@ public class Route53Message {
 	}
 
 	private List<Change> getDNSRRDeleteChanges() {
-		return DNSRR_RECORD.stream()
-				.flatMap(addr -> Stream.of(RRType.A, RRType.AAAA).map(r -> new ResourceRecordSet(addr, r)))
+		Stream<ResourceRecordSet> dnsrr = metadata.getRRSpec().stream()
+				.flatMap(addr -> Stream.of(RRType.A, RRType.AAAA).map(r -> new ResourceRecordSet(addr, r)));
+		Stream<ResourceRecordSet> dnsrr4 = metadata.getRR4Spec().stream()
+				.flatMap(addr -> Stream.of(RRType.A).map(r -> new ResourceRecordSet(addr, r)));
+		Stream<ResourceRecordSet> dnsrr6 = metadata.getRR6Spec().stream()
+				.flatMap(addr -> Stream.of(RRType.AAAA).map(r -> new ResourceRecordSet(addr, r)));
+		return Stream.concat(dnsrr, Stream.concat(dnsrr4, dnsrr6))
 				.map(rr -> new Change(ChangeAction.DELETE, rr))
 				.collect(Collectors.toList());
 	}
 	
 	private List<Change> getSRVDeleteChanges() {
-		return SRV_RECORD.stream()
-				.map(s -> new ResourceRecordSet(s.addr, RRType.SRV))
+		Stream<ResourceRecordSet> srv = metadata.getSRVSpec().stream()
+				.map(s -> new ResourceRecordSet(s.addr, RRType.SRV));
+		Stream<ResourceRecordSet> srv4 = metadata.getSRV6Spec().stream()
+				.map(s -> new ResourceRecordSet(s.addr, RRType.SRV));
+		Stream<ResourceRecordSet> srv6 = metadata.getSRV4Spec().stream()
+				.map(s -> new ResourceRecordSet(s.addr, RRType.SRV));
+		return Stream.concat(srv, Stream.concat(srv4, srv6))
 				.map(rr -> new Change(ChangeAction.DELETE, rr))
 				.collect(Collectors.toList());
 	}
@@ -252,14 +193,16 @@ public class Route53Message {
 	private List<Change> getDNSRRUpsertChanges(Instance i) throws NoIpException {
 		String ipv4ip = Tools.getIPAddress(i);
 		String ipv6ip = Tools.getIPv6Address(i);
-		return DNSRR_RECORD.stream()
-				.flatMap(addr -> {
-					ResourceRecordSet ipv4 = new ResourceRecordSet().withType(RRType.A).withName(addr)
-							.withTTL(getTTL()).withResourceRecords(new ResourceRecord(ipv4ip));
-					return Objects.isNull(ipv6ip) ? Stream.of(ipv4) : 
-						Stream.of(ipv4, new ResourceRecordSet().withType(RRType.AAAA).withName(addr)
-								.withTTL(getTTL()).withResourceRecords(new ResourceRecord(ipv6ip)));
-				})
+		Stream<ResourceRecordSet> addrs = Stream.empty();
+		if (Objects.nonNull(ipv4ip))
+			addrs = Stream.concat(addrs, Stream.concat(metadata.getRRSpec().stream(), metadata.getRR4Spec().stream())
+					.map(addr -> new ResourceRecordSet().withType(RRType.A).withName(addr)
+							.withTTL(getTTL()).withResourceRecords(new ResourceRecord(ipv4ip))));
+		if (Objects.nonNull(ipv6ip))
+			addrs = Stream.concat(addrs, Stream.concat(metadata.getRRSpec().stream(), metadata.getRR4Spec().stream())
+					.map(addr -> new ResourceRecordSet().withType(RRType.AAAA).withName(addr)
+							.withTTL(getTTL()).withResourceRecords(new ResourceRecord(ipv6ip))));
+		return addrs
 				.map(rr -> new Change(ChangeAction.UPSERT, rr))
 				.collect(Collectors.toList());
 	}
@@ -276,7 +219,11 @@ public class Route53Message {
 				return list;
 			}
 		};
-		for (SRVTemplate s : SRV_RECORD)
+		for (SRVTemplate s : metadata.getSRVSpec())
+			map.get(s.addr).add(s);
+		for (SRVTemplate s : metadata.getSRV4Spec())
+			map.get(s.addr).add(s);
+		for (SRVTemplate s : metadata.getSRV6Spec())
 			map.get(s.addr).add(s);
 		
 		return map.entrySet().stream()
@@ -303,7 +250,7 @@ public class Route53Message {
 	
 	private List<Change> getDNSRR4RemoveChanges(Instance i) throws NoIpException {
 		String ip = Tools.getIPAddress(i);
-		return DNSRR_RECORD.stream()
+		return Stream.concat(metadata.getRRSpec().stream(), metadata.getRR4Spec().stream())
 				.map(s -> Tools.getRecordSet(s, RRType.A.toString()))
 				.filter(Objects::nonNull)
 				.map(rr -> {
@@ -319,7 +266,7 @@ public class Route53Message {
 	
 	private List<Change> getDNSRR6RemoveChanges(Instance i) throws NoIpException {
 		String ip = Tools.getIPv6Address(i);
-		return DNSRR_RECORD.stream()
+		return Stream.concat(metadata.getRRSpec().stream(), metadata.getRR6Spec().stream())
 				.map(s -> Tools.getRecordSet(s, RRType.AAAA.toString()))
 				.filter(Objects::nonNull)
 				.map(rr -> {
@@ -344,7 +291,11 @@ public class Route53Message {
 				return list;
 			}
 		};
-		for (SRVTemplate s : SRV_RECORD)
+		for (SRVTemplate s : metadata.getSRVSpec())
+			map.get(s.addr).add(s);
+		for (SRVTemplate s : metadata.getSRV4Spec())
+			map.get(s.addr).add(s);
+		for (SRVTemplate s : metadata.getSRV6Spec())
 			map.get(s.addr).add(s);
 		return map.entrySet().stream()
 				.map(ent -> {
