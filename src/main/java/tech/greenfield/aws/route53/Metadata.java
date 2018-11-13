@@ -14,6 +14,9 @@ public class Metadata {
 	private List<String> DNSRR4_RECORD = Collections.emptyList();
 	private List<String> SRV6_RECORD = Collections.emptyList();
 	private List<String> DNSRR6_RECORD = Collections.emptyList();
+	private boolean PRIVATE = false;
+	private boolean DNSRR_PRIVATE = false;
+	private boolean SRV_PRIVATE = false;
 	
 	public static Metadata fromEnvironment() {
 		Metadata metadata = new Metadata();
@@ -23,6 +26,9 @@ public class Metadata {
 		metadata.setDNSRR_RECORD(getEnvByPrefix("DNSRR_RECORD"));
 		metadata.setDNSRR4_RECORD(getEnvByPrefix("DNSRR4_RECORD"));
 		metadata.setDNSRR6_RECORD(getEnvByPrefix("DNSRR6_RECORD"));
+		metadata.setPRIVATE(!System.getenv().getOrDefault("PRIVATE", "").isEmpty());
+		metadata.setDNSRR_PRIVATE(!System.getenv().getOrDefault("DNSRR_PRIVATE", "").isEmpty());
+		metadata.setSRV_PRIVATE(!System.getenv().getOrDefault("SRV_PRIVATE", "").isEmpty());
 		return metadata;
 	}
 
@@ -116,6 +122,30 @@ public class Metadata {
 
 	public boolean hasDNSRR() {
 		return !(DNSRR_RECORD.isEmpty() && DNSRR4_RECORD.isEmpty() && DNSRR6_RECORD.isEmpty());
+	}
+
+	public boolean isPRIVATE() {
+		return PRIVATE;
+	}
+
+	public void setPRIVATE(boolean pRIVATE) {
+		PRIVATE = pRIVATE;
+	}
+
+	public boolean isDNSRR_PRIVATE() {
+		return DNSRR_PRIVATE;
+	}
+
+	public void setDNSRR_PRIVATE(boolean dNSRR_PRIVATE) {
+		DNSRR_PRIVATE = dNSRR_PRIVATE;
+	}
+
+	public boolean isSRV_PRIVATE() {
+		return SRV_PRIVATE;
+	}
+
+	public void setSRV_PRIVATE(boolean sRV_PRIVATE) {
+		SRV_PRIVATE = sRV_PRIVATE;
 	}
 	
 }
