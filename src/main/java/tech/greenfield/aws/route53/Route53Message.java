@@ -38,10 +38,10 @@ public class Route53Message {
 				throw new IOException("No metadata was sent");
 			String metadataStr = body.get("NotificationMetadata").toString();
 			metadata = s_mapper.readValue(metadataStr, Metadata.class);
+			if(Route53Message.isDebug()) dumpConfiguration();
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
-		if(Route53Message.isDebug()) dumpConfiguration();
 	}
 	
 	@SuppressWarnings("unchecked")
