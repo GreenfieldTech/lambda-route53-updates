@@ -10,10 +10,11 @@ public class BaseNotifyRecords {
 	protected final Logger logger = Logger.getLogger(getClass().getName());
 	
 	protected void setupLogger(Context context) {
-		for (Handler h : logger.getHandlers())
-			logger.removeHandler(h);
+		Logger global = Logger.getGlobal();
+		for (Handler h : global.getHandlers())
+			global.removeHandler(h);
 		LambdaLogger mylog = context.getLogger();
-		logger.addHandler(new Handler() {
+		global.addHandler(new Handler() {
 			
 			{
 				setFormatter(new SimpleFormatter());

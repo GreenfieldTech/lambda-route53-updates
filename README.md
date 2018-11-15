@@ -198,6 +198,43 @@ Resources:
       RoleARN: !GetAtt [ MyLambdaExecutionRole, Arn ]
 ```
 
+## Using The Testing CloudFormation Templates
+
+The projects comes with a few CloudFormation testing templates that can be found under `src/test/resources`. These
+can be used to exercise the Lambda code, or as a basis to build your own deployemnts.
+
+The following test templates are available:
+
+ - `cf-asg-notification.yaml` : connect the autoscaling group to Lambda using autoscaling notifications. Only environment
+   variable configuration is supported.
+ - `cf-lifecycle-env.yaml` : connect the autoscaling group to Lambda using an SNS topic and configure it using
+   environment variables.
+ - `cf-lifecycle-md.yaml` : connect the autoscaling group to Lambda using an SNS topic and configure it using notification
+   metadata. This deployment is appropriate for using the same Lambda deployment to manage multiple autoscaling groups.
+ - `cf-lifecycle-sqs.yaml` : connect the autoscaling group to Lambda using an SQS queue with single concurrency to prevent
+   Route53 edit conflicts. This deployment is appropriate when using the same Lambda for a lot of auto scaling groups with
+   high amount of scaling changes.
+
+To use these test templates:
+
+1. Install the `cloudformation-tool` gem: 
+`gem install --user cloudformation-tool`
+1. Make sure you have a key pair that can be used (a key pair is not managed by the template): 
+`aws ec2 describe-key-pairs`
+1. Build the Lambda:
+`mvn package`
+1. Create a new CloudFormation stack:
+`cftool create -p KeyName=<your-keypair> src/test/resources/cf-lifecycle-env.yaml r53-test`
+1. Scale up the created stack:
+`cftool scale r53-test ASGTest 1`
+1. Wait until the scaling action has completed (i.e. the new server is "InService")
+1. Check that the Route53 hosted zone has been updated with the correct record, using the Route53 console
+1. Scale down the stack:
+`cftool scale r53-test ASGTest 0`
+1. Check that the Route53 hosted zone had the DNS record removed, using the Route53 console
+1. Remove the stack when you finish testing:
+`cftool delete r53-test`
+
 [1]: http://docs.aws.amazon.com/lambda/latest/dg/with-sns-example.html
 [2]: http://docs.aws.amazon.com/autoscaling/latest/userguide/ASGettingNotifications.html
 [3]: http://docs.aws.amazon.com/autoscaling/latest/userguide/lifecycle-hooks.html

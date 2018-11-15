@@ -33,7 +33,7 @@ public class NotifyRecordsSqs extends BaseNotifyRecords implements RequestHandle
 					logger.info("Handling " + messages.size() + " messages from queue.");
 				if(!messages.isEmpty())
 					break;
-				Thread.sleep(50);
+				Thread.sleep(300);
 			}
 			for (Message message : messages) {
 				try {

@@ -11,9 +11,8 @@ import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.events.SNSEvent.SNSRecord;
 import com.amazonaws.services.route53.model.*;
 import com.amazonaws.services.sqs.model.Message;
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.MapperFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.JsonParseException;
+import com.fasterxml.jackson.databind.*;
 
 import tech.greenfield.aws.route53.eventhandler.AutoScaling;
 import tech.greenfield.aws.route53.eventhandler.LifeCycle;
@@ -35,12 +34,17 @@ public class Route53Message {
 		body = retreiveBody(sqs.getBody());
 		if(Route53Message.isDebug())
 			logger.info("SQS message body: " + body);
+		readMetadata();
+	}
+
+	private void readMetadata() throws ParsingException {
 		try {
-			if(Objects.isNull(body.get("NotificationMetadata")))
-				throw new IOException("No metadata was sent");
-			String metadataStr = body.get("NotificationMetadata").toString();
-			metadata = s_mapper.readValue(metadataStr, Metadata.class);
-			if(Route53Message.isDebug()) dumpConfiguration();
+			if (body.containsKey("NotificationMetadata"))
+				metadata = s_mapper.readValue(String.valueOf(body.get("NotificationMetadata")), Metadata.class);
+			else
+				metadata = Metadata.fromEnvironment();
+			if(Route53Message.isDebug())
+				dumpConfiguration();
 		} catch (IOException e) {
 			throw new ParsingException(e);
 		}
@@ -50,9 +54,7 @@ public class Route53Message {
 		body = retreiveBody(sns.getSNS().getMessage());
 		if(Route53Message.isDebug())
 			logger.info("SNS message body: " + body);
-		metadata = Metadata.fromEnvironment();
-		if(Route53Message.isDebug())
-			dumpConfiguration();
+		readMetadata();
 	}
 	
 	private void dumpConfiguration() {
@@ -69,9 +71,8 @@ public class Route53Message {
 		Map<String, Object> obj = null;
 		try {
 			obj = s_mapper.readValue(messageText, Map.class);
-			if (!obj.containsKey("Message"))
-				throw new ParsingException("Missing `Message` Key");
-			obj.putAll(s_mapper.readValue(obj.get("Message").toString(), Map.class));
+			if (obj.containsKey("Message")) // read SQS message content, if exists
+				obj.putAll(s_mapper.readValue(obj.get("Message").toString(), Map.class));
 			return obj;
 		} catch (IOException e) {
 			throw new ParsingException(e);
