@@ -1,0 +1,229 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Parameters:
+  KeyName:
+    Type: String
+    Description: Key pair name used to start the test instance. This is a required parameter.
+
+Mappings:
+  UbuntuRegionImages:
+    ap-northeast-1:
+      bionic: ami-0170b8bb16cfe1e8a
+    ap-northeast-2:
+      bionic: ami-0a5eaf03968d0f65c
+    ap-northeast-3:
+      bionic: ami-0bf02f75813eeb6d8
+    ap-south-1:
+      bionic: ami-02bfe62f02a0aff75
+    ap-southeast-1:
+      bionic: ami-0354063cdbd11f60b
+    ap-southeast-2:
+      bionic: ami-03647744e8329bed2
+    ca-central-1:
+      bionic: ami-0d4bb17ca6e3f23e2
+    cn-north-1:
+      bionic: ami-05596fb52c3802012
+    cn-northwest-1:
+      bionic: ami-03f7db8b059795736
+    eu-central-1:
+      bionic: ami-0390c2c0c27b5d6b8
+    eu-west-1:
+      bionic: ami-08596fdd2d5b64915
+    eu-west-2:
+      bionic: ami-05ee341f1ab0f2643
+    eu-west-3:
+      bionic: ami-01096ce6152c92c71
+    sa-east-1:
+      bionic: ami-092e6baec20e8d25d
+    us-east-1:
+      bionic: ami-05aa248bfb1c99d0f
+    us-east-2:
+      bionic: ami-09e1c6dd3bd60cf2e
+    us-gov-east-1:
+      bionic: ami-825fb8f3
+    us-gov-west-1:
+      bionic: ami-b44b2fd5
+    us-west-1:
+      bionic: ami-0c87f646fc06a59f3
+    us-west-2:
+      bionic: ami-079b4e9085609225c
+
+Resources:
+
+  HZTest:
+    Type: AWS::Route53::HostedZone
+    Properties:
+      Name: lambda-route53.test
+      HostedZoneConfig:
+        Comment: Lambda Route 53 Updates test
+
+  RoleTest:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement: 
+          - 
+            Effect: "Allow"
+            Principal: 
+              Service: "lambda.amazonaws.com"
+            Action: 
+              - "sts:AssumeRole"
+      Policies: 
+        - PolicyName: lambda-route53-update-test
+          PolicyDocument: 
+            Version: "2012-10-17"
+            Statement: 
+              - Effect: "Allow"
+                Action: 
+                 - ec2:DescribeInstances
+                 - ec2:DescribeTags
+                Resource: "*"
+              - Effect: "Allow"
+                Action: 
+                 - logs:CreateLogGroup
+                 - logs:CreateLogStream
+                 - logs:PutLogEvents
+                Resource: "*"
+              - Effect: "Allow"
+                Action: 
+                 - autoscaling:CompleteLifecycleAction
+                 - autoscaling:DescribeAutoScalingGroups
+                Resource: "*"
+              - Effect: "Allow"
+                Action: 
+                 - route53:ListResourceRecordSets
+                 - route53:ChangeResourceRecordSets
+                 - route53:GetChange
+                Resource: "*"
+
+  LTest:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: route53-test
+      Runtime: java8
+      Code:
+        Path: ../../../target/lambda-route53-updates-2.1.3.jar
+      MemorySize: 256
+      Timeout: 240
+      Handler: tech.greenfield.aws.route53.NotifyRecordsSns
+      Environment:
+        Variables:
+          TTL: 15
+          HOSTED_ZONE_ID: !Ref HZTest
+          DEBUG: "1"
+          DNSRR_RECORD: lifecycle-env.lambda-route53.test
+      Role: !GetAtt RoleTest.Arn
+
+  VPCTest:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 172.20.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+
+  SubnetTest:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPCTest
+      AvailabilityZone: !Select [ 0, !GetAZs { Ref: "AWS::Region" } ]
+      CidrBlock: 172.20.0.0/24
+      MapPublicIpOnLaunch: true
+
+  ASGTest:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      VPCZoneIdentifier:
+        - !Ref SubnetTest
+      LaunchConfigurationName: !Ref LCTest
+      DesiredCapacity: 0
+      MinSize: 0
+      MaxSize: 2
+      Tags:
+        - Key: Name
+          Value: Lambda Route53 Update test
+          PropagateAtLaunch: true
+
+  SGTest:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId:
+        Ref: VPCTest
+      GroupDescription: Route53 lambda test
+      SecurityGroupIngress:
+        - { IpProtocol: "icmp", CidrIp: "0.0.0.0/0", FromPort: -1, ToPort: -1 }
+        - { IpProtocol: "tcp", CidrIp: "0.0.0.0/0", FromPort: 22, ToPort: 22 }
+
+  LCTest:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      AssociatePublicIpAddress: true
+      BlockDeviceMappings: # must set this, because the default isn't DeleteOnTermination
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeType: gp2
+            DeleteOnTermination: true
+            VolumeSize: 8
+      ImageId: !FindInMap [UbuntuRegionImages, { Ref: "AWS::Region" }, bionic]
+      InstanceType: t3.micro
+      KeyName:
+        Ref: KeyName
+      SecurityGroups:
+        - Ref: SGTest
+
+  SNSTest:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: Lambda Route53 Updates test
+      Subscription:
+        - Protocol: lambda
+          Endpoint: !GetAtt LTest.Arn
+
+  LPermissionTest:
+    Type: "AWS::Lambda::Permission"
+    Properties:
+      FunctionName: !GetAtt LTest.Arn
+      Action: "lambda:InvokeFunction"
+      Principal: sns.amazonaws.com
+      SourceArn: !Ref SNSTest
+
+  RoleNotificationTest:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+                - autoscaling.amazonaws.com
+            Action:
+              - "sts:AssumeRole"
+      Policies: 
+        - PolicyName: lambda-route53-update-notify-test
+          PolicyDocument: 
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action:
+                  - "sns:*"
+                Resource: "*"
+
+  LHTestIn:
+    Type: AWS::AutoScaling::LifecycleHook
+    Properties:
+      LifecycleTransition: "autoscaling:EC2_INSTANCE_TERMINATING"
+      AutoScalingGroupName: !Ref ASGTest
+      NotificationTargetARN: !Ref SNSTest
+      RoleARN: !GetAtt RoleNotificationTest.Arn
+      HeartbeatTimeout: 300
+
+  LHTestOut:
+    Type: AWS::AutoScaling::LifecycleHook
+    Properties:
+      LifecycleTransition: "autoscaling:EC2_INSTANCE_LAUNCHING"
+      AutoScalingGroupName: !Ref ASGTest
+      NotificationTargetARN: !Ref SNSTest
+      RoleARN: !GetAtt RoleNotificationTest.Arn
+      HeartbeatTimeout: 300

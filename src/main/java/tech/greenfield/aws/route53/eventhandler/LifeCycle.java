@@ -28,19 +28,19 @@ public class LifeCycle extends EventHandler {
 			// after handling the event, we need to invoke the life cycle action handler
 			// to complete the life cycle
 			if (Objects.isNull(lifecycleActionToken)) {
-				log("Skipping lifecycle completion because there's no token");
+				logger.info("Skipping lifecycle completion because there's no token");
 				return;
 			}
-			log("Completing life-cycle action with token " + lifecycleActionToken);
+			logger.info("Completing life-cycle action with token " + lifecycleActionToken);
 			autoscaling().completeLifecycleAction(new CompleteLifecycleActionRequest()
 					.withAutoScalingGroupName(event.getAutoScalingGroupName())
 					.withLifecycleHookName(event.getLifecycleHookName())
 					.withLifecycleActionToken(lifecycleActionToken)
 					.withLifecycleActionResult("CONTINUE"));
 		} catch (Throwable e) {
-			log("Error in lifecycle event handlind, abandoning lifecycle with token " + lifecycleActionToken);
+			logger.severe("Error in lifecycle event handlind, abandoning lifecycle with token " + lifecycleActionToken);
 			if (Objects.isNull(lifecycleActionToken))
-				log("Skipping lifecycle completion because there's no token");
+				logger.warning("Skipping lifecycle completion because there's no token");
 			else
 				autoscaling().completeLifecycleAction(new CompleteLifecycleActionRequest()
 						.withAutoScalingGroupName(event.getAutoScalingGroupName())
