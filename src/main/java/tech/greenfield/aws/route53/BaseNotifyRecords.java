@@ -1,5 +1,6 @@
 package tech.greenfield.aws.route53;
 
+import java.util.Objects;
 import java.util.logging.Handler;
 import java.util.logging.LogRecord;
 import java.util.logging.Logger;
@@ -19,7 +20,10 @@ public class BaseNotifyRecords {
 			
 			@Override
 			public void publish(LogRecord record) {
-				mylog.log(getFormatter().format(record));
+				if (Objects.nonNull(mylog))
+					mylog.log(getFormatter().format(record));
+				else
+					System.err.println(getFormatter().format(record));
 			}
 			
 			@Override
