@@ -1,9 +1,6 @@
 package tech.greenfield.aws.route53;
 
-import java.util.Objects;
-import java.util.logging.Handler;
-import java.util.logging.LogRecord;
-import java.util.logging.Logger;
+import java.util.logging.*;
 
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.LambdaLogger;
@@ -18,12 +15,13 @@ public class BaseNotifyRecords {
 		LambdaLogger mylog = context.getLogger();
 		logger.addHandler(new Handler() {
 			
+			{
+				setFormatter(new SimpleFormatter());
+			}
+			
 			@Override
 			public void publish(LogRecord record) {
-				if (Objects.nonNull(mylog))
-					mylog.log(getFormatter().format(record));
-				else
-					System.err.println(getFormatter().format(record));
+				mylog.log(getFormatter().format(record));
 			}
 			
 			@Override
