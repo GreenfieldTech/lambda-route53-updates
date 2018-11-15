@@ -5,7 +5,6 @@ import java.net.ConnectException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.*;
-import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 import com.amazonaws.services.ec2.AmazonEC2ClientBuilder;
@@ -18,17 +17,13 @@ import com.amazonaws.services.sqs.AmazonSQSClientBuilder;
 import com.amazonaws.services.sqs.model.*;
 
 
-public class NotifyRecordsSqs implements RequestHandler<SNSEvent, Route53UpdateResponse>{
+public class NotifyRecordsSqs extends BaseNotifyRecords implements RequestHandler<SNSEvent, Route53UpdateResponse>{
 
-	private final static Logger logger = Logger.getLogger(NotifyRecordsSqs.class.getName());
 	private static String queueUrl = null;
-	private Route53Message sqsMessage;
 	
-	public NotifyRecordsSqs() {
-	}
-
 	@Override
 	public Route53UpdateResponse handleRequest(SNSEvent input, Context context) {
+		setupLogger(context);
 		logger.info("Handling sqs request");
 		try {
 			List<Message> messages = new ArrayList<>();
@@ -41,17 +36,19 @@ public class NotifyRecordsSqs implements RequestHandler<SNSEvent, Route53UpdateR
 				Thread.sleep(50);
 			}
 			for (Message message : messages) {
-				sqsMessage = new Route53Message(message); 
-				if(Route53Message.isDebug())
-					logger.info("Handling message: " + sqsMessage.getBody());
-				handleMessage(sqsMessage, context);
-				deleteMessage(sqsMessage);
+				try {
+					Route53Message sqsMessage = new Route53Message(message);
+					handleMessage(sqsMessage, context);
+				} catch (ParsingException e) {
+					Tools.logException(logger, "Failed to parse notification",e);
+					logger.severe("Original message: " + message.getBody());
+				} 
+				deleteMessage(message.getReceiptHandle());
 				if(Route53Message.isDebug())
 					logger.info("Deleted message");
 			}
 		} catch (InterruptedException | IOException e) {
-			e.printStackTrace();
-			logger.warning("Couldn't get/handle sqs messages");
+			Tools.logException(logger, "Couldn't get/handle sqs messages", e);
 			return Response.error(e.getMessage()); 
 		}
 		return Response.ok();
@@ -59,30 +56,21 @@ public class NotifyRecordsSqs implements RequestHandler<SNSEvent, Route53UpdateR
 	
 	public Route53UpdateResponse handleMessage(Route53Message input, Context context) {
 		try {
-			if (Objects.isNull(input.getMessage())) {
-				context.getLogger().log("Invalid SQS message object");
-				return Response.error("no SQS message");
-			}
-			EventHandler.create(context, input).handle();
+			input.createEventHandler(context).handle();
 			context.getLogger().log("Done updating Route53");
 			return Response.ok();
 		} catch (Throwable t) {
-			t.printStackTrace();
-			context.getLogger().log("Unexpected error while updating Route53: " + t);
+			Tools.logException(logger, "Unexpected error while updating Route53", t);
 			return Response.error(t.toString()); 
 		}
-	}
-	
-	public Route53Message getSqsMessage() {
-		return sqsMessage;
 	}
 	
 	public List<Message> getMessages() throws IOException {
 		return AmazonSQSClientBuilder.defaultClient().receiveMessage(new ReceiveMessageRequest(getQueueUrl()).withMaxNumberOfMessages(10)).getMessages();
 	}
 
-	public DeleteMessageResult deleteMessage(Route53Message message) throws IOException {
-		return AmazonSQSClientBuilder.defaultClient().deleteMessage(new DeleteMessageRequest(getQueueUrl(), message.getMessage().getReceiptHandle()));
+	public DeleteMessageResult deleteMessage(String receipt) throws IOException {
+		return AmazonSQSClientBuilder.defaultClient().deleteMessage(new DeleteMessageRequest(getQueueUrl(), receipt));
 	}
 
 	private String getQueueUrl() throws IOException {
@@ -110,7 +98,6 @@ public class NotifyRecordsSqs implements RequestHandler<SNSEvent, Route53UpdateR
 				try {
 					return getResult(new URL("http://169.254.169.254/latest/meta-data/instance-id").getContent());
 				} catch (MalformedURLException e) {
-					e.printStackTrace();
 					throw new IOException(e);
 				} catch (ConnectException e) {
 					logger.warning("Retrying getInstanceId because of: " + e.getMessage());
@@ -126,9 +113,9 @@ public class NotifyRecordsSqs implements RequestHandler<SNSEvent, Route53UpdateR
 			try(BufferedReader br = new BufferedReader(new InputStreamReader((InputStream) obj, "UTF-8"))) {
 				return br.lines().collect(Collectors.joining());
 			} catch (UnsupportedEncodingException e) {
-				e.printStackTrace();
+				Tools.logException(logger, "Unexpected encoding error", e);
 			} catch (IOException e1) {
-				e1.printStackTrace();
+				Tools.logException(logger, "Unexpected IO error reading response", e1);
 			}
 		}
 		return obj.toString();

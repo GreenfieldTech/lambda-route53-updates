@@ -4,8 +4,11 @@ import static tech.greenfield.aws.Clients.autoscaling;
 import static tech.greenfield.aws.Clients.ec2;
 import static tech.greenfield.aws.Clients.route53;
 
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.util.List;
 import java.util.Objects;
+import java.util.logging.Logger;
 
 import com.amazonaws.services.autoscaling.model.DescribeAutoScalingGroupsRequest;
 import com.amazonaws.services.ec2.model.DescribeInstancesRequest;
@@ -108,5 +111,10 @@ public class Tools {
 				.map(addr -> addr.getIpv6Address()).orElse(null);
 	}
 
+	public static void logException(Logger logger, String message, Throwable t) {
+		StringWriter sw = new StringWriter();
+		t.printStackTrace(new PrintWriter(sw));
+		logger.severe(message + ": " + t.toString() + "\n" + sw.toString());
+	}
 
 }

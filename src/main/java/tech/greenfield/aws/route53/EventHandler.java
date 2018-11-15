@@ -3,22 +3,17 @@ package tech.greenfield.aws.route53;
 import static tech.greenfield.aws.Clients.ec2;
 import static tech.greenfield.aws.Clients.route53;
 
-import java.io.PrintWriter;
-import java.io.StringWriter;
 import java.util.*;
+import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 import com.amazonaws.SdkBaseException;
 import com.amazonaws.services.ec2.model.DescribeInstancesRequest;
 import com.amazonaws.services.ec2.model.Instance;
 import com.amazonaws.services.lambda.runtime.Context;
-import com.amazonaws.services.lambda.runtime.LambdaLogger;
 import com.amazonaws.services.route53.model.*;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
-import tech.greenfield.aws.route53.eventhandler.AutoScaling;
-import tech.greenfield.aws.route53.eventhandler.LifeCycle;
 
 /**
  * Handler for a single SNS event that was submitted to the lambda implementation
@@ -49,7 +44,7 @@ public class EventHandler {
 
 	static private ObjectMapper s_mapper = new ObjectMapper();
 	
-	private LambdaLogger logger;
+	protected Logger logger = Logger.getLogger(getClass().getName());
 	private EventType eventType;
 	private String ec2instanceId;
 	private String autoScalingGroupName;
@@ -58,41 +53,8 @@ public class EventHandler {
 	static {
 		s_mapper.configure(MapperFeature.ACCEPT_CASE_INSENSITIVE_PROPERTIES, true);
 	}
-
-	/**
-	 * Constructor to parse the SNS message and perform additional initialization
-	 * @param context Call context from engine
-	 * @param msg SNS event to process
-	 */
-//	public static EventHandler create(Context context, Route53Message msg) {
-//		String snsMessageText = msg.getSNS().getMessage();
-//		if (msg.isDebug())
-//			context.getLogger().log("Got SNS message: " + snsMessageText + "\n");
-//		try {
-//			ObjectNode obj = s_mapper.readValue(snsMessageText, ObjectNode.class);
-//			if (obj.has("LifecycleHookName"))
-//				return new LifeCycle(context, s_mapper.readValue(snsMessageText, LifeCycleNotification.class), msg);
-//			else
-//				return new AutoScaling(context, s_mapper.readValue(snsMessageText, AutoScalingNotification.class), msg);
-//		} catch (IOException e) {
-//			throw new RuntimeException("Unexpected parsing error: " + e.getMessage(),e);
-//		}
-//	}
-	
-	public static EventHandler create(Context context, Route53Message msg) {
-		Map<String, Object> messageBody = msg.getBody();
-		if (Route53Message.isDebug())
-			context.getLogger().log("Got message: " + messageBody + "\n");
-		if (messageBody.containsKey("LifecycleTransition")) 
-			return new LifeCycle(context, s_mapper.convertValue(messageBody, LifeCycleNotification.class), msg);
-		else if (msg.retreiveBody().containsKey("LifecycleTransition"))
-			return new LifeCycle(context, s_mapper.convertValue(msg.retreiveBody(), LifeCycleNotification.class), msg);
-		else
-			return new AutoScaling(context, s_mapper.convertValue(messageBody, AutoScalingNotification.class), msg);
-	}
 	
 	protected EventHandler(Context context, EventType eventType, String ec2InstanceId, String autoScalingGroupName, Route53Message message) {
-		this.logger = context.getLogger();
 		this.eventType = Objects.requireNonNull(eventType, "Missing event type");
 		this.ec2instanceId = ec2InstanceId;
 		this.autoScalingGroupName = autoScalingGroupName;
@@ -114,12 +76,12 @@ public class EventHandler {
 				break;
 			default: // do nothing in case of launch error or test notification
 			}
-		} catch(NoIpException e) {
-			logger.log("Error: " + e.getMessage());
-			logger.log("No IP was found, starting plan B - update all instances");
+		} catch (NoIpException e) {
+			logger.warning("Error: " + e.getMessage());
+			logger.warning("No IP was found, starting plan B - update all instances");
 			rebuildAllRRs(this.autoScalingGroupName);
 		} catch (SilentFailure | SdkBaseException e) {
-			log("Silently failing Route53 update: " + e);
+			Tools.logException(logger, "Silently failing Route53 update", e);
 		}
 	}
 	
@@ -132,12 +94,12 @@ public class EventHandler {
 		
 		ChangeBatch changes = instances.isEmpty() ? message.getDeleteChanges() : message.getUpsertChanges(instances);
 		if (Route53Message.isDebug())
-			log("Sending DNS change request: " + changes);
+			logger.info("Sending DNS change request: " + changes);
 		try {
 			ChangeResourceRecordSetsRequest req = new ChangeResourceRecordSetsRequest(Route53Message.getHostedZoneId(), changes);
 			Tools.waitFor(route53().changeResourceRecordSets(req));
 		} catch (IllegalArgumentException e) {
-			log("Error in submitting Route53 update",e);
+			Tools.logException(logger, "Error in submitting Route53 update",e);
 			throw new SdkBaseException(e);
 		}
 	}
@@ -148,11 +110,11 @@ public class EventHandler {
 	 * @param ttl TTL in seconds to use when creating a new record
 	 */
 	private void registerInstance(String ec2InstanceId) throws NoIpException{
-		log("Registering " + ec2InstanceId);
+		logger.info("Registering " + ec2InstanceId);
 		ChangeBatch cb = message.getUpsertChanges(Collections.singletonList(getInstance(ec2InstanceId)));
 		
 		if (Route53Message.isDebug())
-			log("Adding instance with addresses: " + cb);
+			logger.fine("Adding instance with addresses: " + cb);
 
 		for (Change c : cb.getChanges()) {
 			ResourceRecordSet rr = c.getResourceRecordSet();
@@ -162,7 +124,7 @@ public class EventHandler {
 		}
 		ChangeResourceRecordSetsRequest req = new ChangeResourceRecordSetsRequest(Route53Message.getHostedZoneId(), cb);
 		if (Route53Message.isDebug())
-			log("Sending rr change request: " + req);
+			logger.fine("Sending rr change request: " + req);
 		Tools.waitFor(route53().changeResourceRecordSets(req));
 	}
 	
@@ -173,15 +135,15 @@ public class EventHandler {
 	 * @throws NoIpException 
 	 */
 	private void deregisterInstance(String ec2InstanceId) throws NoIpException {
-		log("Deregistering " + ec2InstanceId);
+		logger.info("Deregistering " + ec2InstanceId);
 		ChangeBatch changes = message.getRemoveChanges(getInstance(ec2InstanceId));
 		if (changes.getChanges().isEmpty()) {
-			log("Nothing to remove");
+			logger.info("Nothing to remove");
 			return;
 		}
 		ChangeResourceRecordSetsRequest req = new ChangeResourceRecordSetsRequest(Route53Message.getHostedZoneId(), changes);
 		if (Route53Message.isDebug())
-			log("Sending rr change request: " + req);
+			logger.fine("Sending rr change request: " + req);
 		Tools.waitFor(route53().changeResourceRecordSets(req));
 	}
 	
@@ -207,12 +169,12 @@ public class EventHandler {
 				action.run();
 				return;
 			} catch (AmazonRoute53Exception e) {
-				log("Throttled: " + e);
 				// retry in case of 
 				if (e.getMessage().contains("Rate exceeded")) {
+					logger.info("Throttled: " + e);
 					try {
 						Thread.sleep(2000);
-						log("Retrying...");
+						logger.info("Retrying...");
 					} catch (InterruptedException e1) { }
 					continue;
 				} else
@@ -220,14 +182,5 @@ public class EventHandler {
 			}
 		}
 	}
-
-	protected void log(String message) {
-		logger.log(message + "\n");
-	}
-
-	private void log(String string, Exception e) {
-		StringWriter sw = new StringWriter();
-		e.printStackTrace(new PrintWriter(sw));
-		logger.log(message + "\nCAused by:\n" + sw.toString());
-	}
+	
 }

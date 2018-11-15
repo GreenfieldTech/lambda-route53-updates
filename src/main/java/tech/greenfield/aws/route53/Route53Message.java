@@ -7,6 +7,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import com.amazonaws.services.ec2.model.Instance;
+import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.events.SNSEvent.SNSRecord;
 import com.amazonaws.services.route53.model.*;
 import com.amazonaws.services.sqs.model.Message;
@@ -14,13 +15,15 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import tech.greenfield.aws.route53.eventhandler.AutoScaling;
+import tech.greenfield.aws.route53.eventhandler.LifeCycle;
+
 public class Route53Message {
 	
-	private Message message;
 	private Map<String, Object> body;
 	private Metadata metadata;
 	static private ObjectMapper s_mapper = new ObjectMapper();
-	private final static Logger logger = Logger.getLogger(NotifyRecordsSqs.class.getName());
+	private final Logger logger = Logger.getLogger(getClass().getName());
 	private static final long DEFAULT_TTL = 300;
 
 	static {
@@ -28,9 +31,8 @@ public class Route53Message {
 		s_mapper.configure(DeserializationFeature.ACCEPT_SINGLE_VALUE_AS_ARRAY, true);
 	}
 	
-	public Route53Message(Message sqs) {
-		this.message = sqs;
-		this.body = retreiveBody();
+	public Route53Message(Message sqs) throws ParsingException {
+		body = retreiveBody(sqs.getBody());
 		if(Route53Message.isDebug())
 			logger.info("SQS message body: " + body);
 		try {
@@ -40,17 +42,14 @@ public class Route53Message {
 			metadata = s_mapper.readValue(metadataStr, Metadata.class);
 			if(Route53Message.isDebug()) dumpConfiguration();
 		} catch (IOException e) {
-			e.printStackTrace();
+			throw new ParsingException(e);
 		}
 	}
 	
-	@SuppressWarnings("unchecked")
-	public Route53Message(SNSRecord sns) {
-		try {
-			this.body = s_mapper.readValue(sns.getSNS().getMessage(), Map.class);
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
+	public Route53Message(SNSRecord sns) throws ParsingException {
+		body = retreiveBody(sns.getSNS().getMessage());
+		if(Route53Message.isDebug())
+			logger.info("SNS message body: " + body);
 		metadata = Metadata.fromEnvironment();
 		if(Route53Message.isDebug())
 			dumpConfiguration();
@@ -66,24 +65,22 @@ public class Route53Message {
 	}
 
 	@SuppressWarnings("unchecked")
-	public Map<String, Object> retreiveBody(){
-		String sqsMessageText = this.message.getBody();
+	public Map<String, Object> retreiveBody(String messageText) throws ParsingException{
 		Map<String, Object> obj = null;
 		try {
-			obj = s_mapper.readValue(sqsMessageText, Map.class);
+			obj = s_mapper.readValue(messageText, Map.class);
 			obj.putAll(s_mapper.readValue(obj.get("Message").toString(), Map.class));
+			return obj;
 		} catch (IOException e) {
-			e.printStackTrace();
+			throw new ParsingException(e);
 		}
-		return obj;
 	}
 	
-	public Map<String, Object> getBody(){
-		return body;
-	}
-	
-	public Message getMessage() {
-		return message;
+	public EventHandler createEventHandler(Context context) {
+		if (body.containsKey("LifecycleTransition")) 
+			return new LifeCycle(context, s_mapper.convertValue(body, LifeCycleNotification.class), this);
+		else
+			return new AutoScaling(context, s_mapper.convertValue(body, AutoScalingNotification.class), this);
 	}
 	
 	/**
