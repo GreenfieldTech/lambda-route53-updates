@@ -69,6 +69,8 @@ public class Route53Message {
 		Map<String, Object> obj = null;
 		try {
 			obj = s_mapper.readValue(messageText, Map.class);
+			if (!obj.containsKey("Message"))
+				throw new ParsingException("Missing `Message` Key");
 			obj.putAll(s_mapper.readValue(obj.get("Message").toString(), Map.class));
 			return obj;
 		} catch (IOException e) {

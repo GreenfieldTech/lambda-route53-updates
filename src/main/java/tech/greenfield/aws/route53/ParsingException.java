@@ -8,4 +8,8 @@ public class ParsingException extends Exception {
 		super(e);
 	}
 
+	public ParsingException(String message) {
+		super(message);
+	}
+
 }
