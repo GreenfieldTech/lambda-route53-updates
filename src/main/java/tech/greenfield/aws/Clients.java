@@ -6,10 +6,11 @@ import java.util.Objects;
 
 import com.amazonaws.regions.Region;
 import com.amazonaws.regions.Regions;
-import com.amazonaws.services.autoscaling.AmazonAutoScaling;
-import com.amazonaws.services.autoscaling.AmazonAutoScalingClient;
-import com.amazonaws.services.ec2.AmazonEC2Client;
-import com.amazonaws.services.route53.AmazonRoute53Client;
+import com.amazonaws.services.autoscaling.*;
+import com.amazonaws.services.ec2.AmazonEC2;
+import com.amazonaws.services.ec2.AmazonEC2ClientBuilder;
+import com.amazonaws.services.route53.AmazonRoute53;
+import com.amazonaws.services.route53.AmazonRoute53ClientBuilder;
 
 /**
  * AWS SDK clients helper
@@ -36,9 +37,9 @@ import com.amazonaws.services.route53.AmazonRoute53Client;
  */
 public class Clients {
 
-	static private AmazonRoute53Client r53;
-	static private AmazonEC2Client ec2;
-	private static AmazonAutoScaling autoscaling;
+	static private AmazonRoute53 r53;
+	static private AmazonEC2 ec2;
+	private static AmazonAutoScalingAsync autoscaling;
 	
 	private static Region region = Regions.getCurrentRegion();
 	
@@ -52,29 +53,30 @@ public class Clients {
 		}
 	}
 
-	synchronized public static AmazonRoute53Client route53() {
+	synchronized public static AmazonRoute53 route53() {
 		if (Objects.isNull(r53)) {
-			System.err.println("Initializing Route53 client using " + getCreds());
-			r53 = new AmazonRoute53Client(getCreds());
-			r53.setRegion(region);
+			System.err.println("Initializing Route53 client using " + Tools.getCredsProvider());
+			r53 = AmazonRoute53ClientBuilder.standard().withCredentials(Tools.getCredsProvider())
+					.withRegion(region.getName())
+					.build();
 		}
 		return r53;
 	}
 
-	synchronized public static AmazonEC2Client ec2() {
+	synchronized public static AmazonEC2 ec2() {
 		if (Objects.isNull(ec2)) {
 			System.err.println("Initializing EC2 client using " + getCreds());
-			ec2 = new AmazonEC2Client(getCreds());
-			ec2.setRegion(region);
+			ec2 = AmazonEC2ClientBuilder.standard().withCredentials(Tools.getCredsProvider())
+					.withRegion(region.getName()).build();
 		}
 		return ec2;
 	}
 	
-	synchronized public static AmazonAutoScaling autoscaling() {
+	synchronized public static AmazonAutoScalingAsync autoscaling() {
 		if (Objects.isNull(autoscaling)) {
 			System.err.println("Initializing AutoScaling client using " + getCreds());
-			autoscaling = new AmazonAutoScalingClient(getCreds());
-			autoscaling.setRegion(region);
+			autoscaling = AmazonAutoScalingAsyncClientBuilder.standard().withCredentials(Tools.getCredsProvider())
+					.withRegion(region.getName()).build();
 		}
 		return autoscaling;
 	}

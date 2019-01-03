@@ -3,6 +3,7 @@ package tech.greenfield.aws;
 import java.util.Objects;
 
 import com.amazonaws.auth.AWSCredentials;
+import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
 import com.amazonaws.auth.profile.ProfileCredentialsProvider;
 
@@ -41,10 +42,14 @@ public class Tools {
 	 * @return AWS credentials to use for accessing the AWS API
 	 */
 	public static AWSCredentials getCreds() {
+		return getCredsProvider().getCredentials();
+	}
+	
+	public static AWSCredentialsProvider getCredsProvider() {
 		String forceProfile = System.getenv("AWS_PROFILE");
 		if (Objects.nonNull(forceProfile) && !forceProfile.isEmpty())
-			return new ProfileCredentialsProvider(forceProfile).getCredentials();
-		return DefaultAWSCredentialsProviderChain.getInstance().getCredentials();
+			return new ProfileCredentialsProvider(forceProfile);
+		return DefaultAWSCredentialsProviderChain.getInstance();
 	}
 	
 }
