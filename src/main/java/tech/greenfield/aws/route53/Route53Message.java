@@ -11,7 +11,6 @@ import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.events.SNSEvent.SNSRecord;
 import com.amazonaws.services.route53.model.*;
 import com.amazonaws.services.sqs.model.Message;
-import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.databind.*;
 
 import tech.greenfield.aws.route53.eventhandler.AutoScaling;

@@ -4,6 +4,7 @@ import static tech.greenfield.aws.Clients.autoscaling;
 
 import java.util.Objects;
 
+import com.amazonaws.services.autoscaling.model.AmazonAutoScalingException;
 import com.amazonaws.services.autoscaling.model.CompleteLifecycleActionRequest;
 import com.amazonaws.services.lambda.runtime.Context;
 
@@ -32,21 +33,32 @@ public class LifeCycle extends EventHandler {
 				return;
 			}
 			logger.info("Completing life-cycle action with token " + lifecycleActionToken);
-			autoscaling().completeLifecycleAction(new CompleteLifecycleActionRequest()
-					.withAutoScalingGroupName(event.getAutoScalingGroupName())
-					.withLifecycleHookName(event.getLifecycleHookName())
-					.withLifecycleActionToken(lifecycleActionToken)
-					.withLifecycleActionResult("CONTINUE"));
+			completeLifecycle(lifecycleActionToken, "CONTINUE");
 		} catch (Throwable e) {
 			logger.severe("Error in lifecycle event handlind, abandoning lifecycle with token " + lifecycleActionToken);
 			if (Objects.isNull(lifecycleActionToken))
 				logger.warning("Skipping lifecycle completion because there's no token");
 			else
-				autoscaling().completeLifecycleAction(new CompleteLifecycleActionRequest()
-						.withAutoScalingGroupName(event.getAutoScalingGroupName())
-						.withLifecycleHookName(event.getLifecycleHookName())
-						.withLifecycleActionToken(lifecycleActionToken)
-						.withLifecycleActionResult("ABANDON"));
+				completeLifecycle(lifecycleActionToken, "ABANDON");
+			throw e;
+		}
+	}
+
+	/**
+	 * @param lifecycleActionToken the token identifying the life cycle action
+	 * @param result The result of the life cycle action to publish
+	 * @return life cycle action result
+	 */
+	private void completeLifecycle(String lifecycleActionToken, String result) {
+		try {
+			autoscaling().completeLifecycleAction(new CompleteLifecycleActionRequest()
+					.withAutoScalingGroupName(event.getAutoScalingGroupName())
+					.withLifecycleHookName(event.getLifecycleHookName())
+					.withLifecycleActionToken(lifecycleActionToken)
+					.withLifecycleActionResult(result));
+		} catch (AmazonAutoScalingException e) {
+			if (e.getMessage().contains("No active Lifecycle Action found"))
+				return;
 			throw e;
 		}
 	}
