@@ -1,6 +1,6 @@
 language: java
 jdk:
-- oraclejdk9
+- openjdk8
 script: mvn -B package shade:shade
 deploy:
   provider: releases
