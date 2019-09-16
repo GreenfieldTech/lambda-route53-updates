@@ -110,8 +110,9 @@ public class EventHandler {
 	 * @param ttl TTL in seconds to use when creating a new record
 	 */
 	private void registerInstance(String ec2InstanceId) throws NoIpException{
-		logger.info("Registering " + ec2InstanceId);
-		ChangeBatch cb = message.getUpsertChanges(Collections.singletonList(getInstance(ec2InstanceId)));
+		Instance i = getInstance(ec2InstanceId);
+		logger.info("Registering " + ec2InstanceId + " - " + Tools.getIPAddress(i));
+		ChangeBatch cb = message.getUpsertChanges(i);
 		
 		if (Route53Message.isDebug())
 			logger.fine("Adding instance with addresses: " + cb);
@@ -135,8 +136,9 @@ public class EventHandler {
 	 * @throws NoIpException 
 	 */
 	private void deregisterInstance(String ec2InstanceId) throws NoIpException {
-		logger.info("Deregistering " + ec2InstanceId);
-		ChangeBatch changes = message.getRemoveChanges(getInstance(ec2InstanceId));
+		Instance i = getInstance(ec2InstanceId);
+		logger.info("Deregistering " + ec2InstanceId + " - " + Tools.getIPAddress(i));
+		ChangeBatch changes = message.getRemoveChanges(i);
 		if (changes.getChanges().isEmpty()) {
 			logger.info("Nothing to remove");
 			return;
