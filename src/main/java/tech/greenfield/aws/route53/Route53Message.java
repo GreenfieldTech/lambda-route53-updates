@@ -182,10 +182,10 @@ public class Route53Message {
 		ChangeBatch out = new ChangeBatch();
 		if (useDNSRR())
 			for (Instance i : instances)
-				out.getChanges().addAll(getDNSRRUpsertChanges(i));
+				out.getChanges().addAll(getDNSRRUpsertChanges(i).stream().collect(new BatchChangesByName()));
 		if (useSRV())
 			for (Instance i : instances)
-				out.getChanges().addAll(getSRVUpsertChanges(i));
+				out.getChanges().addAll(getSRVUpsertChanges(i).stream().collect(new BatchChangesByName()));
 		return out;
 	}
 
