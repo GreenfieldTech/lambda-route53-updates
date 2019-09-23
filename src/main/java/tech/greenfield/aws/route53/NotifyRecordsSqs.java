@@ -27,7 +27,7 @@ public class NotifyRecordsSqs extends BaseNotifyRecords implements RequestHandle
 		logger.info("Handling sqs request");
 		try {
 			List<Message> messages = new ArrayList<>();
-			while(true) {
+			for (int i = 0; i < 10; i++) {
 				messages = getMessages();
 				if(Route53Message.isDebug())
 					logger.info("Handling " + messages.size() + " messages from queue.");
