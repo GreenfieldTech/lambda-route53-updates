@@ -6,6 +6,7 @@ import static tech.greenfield.aws.Clients.route53;
 import java.util.*;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import com.amazonaws.SdkBaseException;
 import com.amazonaws.services.ec2.model.DescribeInstancesRequest;
@@ -120,8 +121,10 @@ public class EventHandler {
 		for (Change c : cb.getChanges()) {
 			ResourceRecordSet rr = c.getResourceRecordSet();
 			ResourceRecordSet oldrr = Tools.getRecordSet(rr.getName(), rr.getType());
-			if (Objects.nonNull(oldrr))
-				oldrr.getResourceRecords().forEach(r -> rr.withResourceRecords(r));
+			if (Objects.isNull(oldrr))
+				continue;
+			rr.setResourceRecords(Stream.concat(oldrr.getResourceRecords().stream(), rr.getResourceRecords().stream())
+					.distinct().collect(Collectors.toList()));
 		}
 		ChangeResourceRecordSetsRequest req = new ChangeResourceRecordSetsRequest(Route53Message.getHostedZoneId(), cb);
 		if (Route53Message.isDebug())
