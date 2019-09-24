@@ -28,12 +28,11 @@ public class BatchChangesByName implements Collector<Change, List<ResourceRecord
 	public Function<List<ResourceRecordSet>, List<Change>> finisher() {
 		return list -> list.stream()
 				.collect(Collectors.groupingBy(this::groupingKey))
-				.values().stream().filter(l -> !l.isEmpty()).map(l -> {
-					ResourceRecordSet rr = l.get(0);
-					rr.setResourceRecords(l.stream().flatMap(rrs -> rrs.getResourceRecords().stream())
-							.collect(distinctValues()).values());
-					return new Change(ChangeAction.UPSERT, rr);
-				}).collect(Collectors.toList());
+				.values().stream()
+				.filter(l -> !l.isEmpty())
+				.map(this::mergeDupResourceRecordSets)
+				.map(rrs -> new Change(ChangeAction.UPSERT, rrs))
+				.collect(Collectors.toList());
 	}
 
 	@Override
@@ -45,10 +44,12 @@ public class BatchChangesByName implements Collector<Change, List<ResourceRecord
 		return rr.getName() + ":" + rr.getType();
 	}
 	
-	private Collector<ResourceRecord, ?, Map<String, ResourceRecord>> distinctValues() {
-		return Collectors.toMap(ResourceRecord::getValue, Function.identity(), (o1, o2) -> {
-			return o1;
-		});
+	private ResourceRecordSet mergeDupResourceRecordSets(List<ResourceRecordSet> lRRSets) {
+		ResourceRecordSet out = lRRSets.get(0).clone();
+		out.setResourceRecords(lRRSets.stream().flatMap(rrs -> rrs.getResourceRecords().stream())
+					.filter(rr -> Objects.nonNull(rr.getValue()))
+					.distinct()
+					.collect(Collectors.toList()));
+		return out;
 	}
-
 }
