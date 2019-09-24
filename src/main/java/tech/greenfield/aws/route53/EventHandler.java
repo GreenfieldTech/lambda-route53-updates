@@ -125,7 +125,7 @@ public class EventHandler {
 		}
 		ChangeResourceRecordSetsRequest req = new ChangeResourceRecordSetsRequest(Route53Message.getHostedZoneId(), cb);
 		if (Route53Message.isDebug())
-			logger.fine("Sending rr change request: " + req);
+			logger.info("Sending rr change request: " + req);
 		Tools.waitFor(route53().changeResourceRecordSets(req));
 	}
 	
