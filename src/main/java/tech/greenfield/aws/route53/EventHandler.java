@@ -115,7 +115,7 @@ public class EventHandler {
 		ChangeBatch cb = message.getUpsertChanges(i);
 		
 		if (Route53Message.isDebug())
-			logger.fine("Adding instance with addresses: " + cb);
+			logger.info("Adding instance with addresses: " + cb);
 
 		for (Change c : cb.getChanges()) {
 			ResourceRecordSet rr = c.getResourceRecordSet();
