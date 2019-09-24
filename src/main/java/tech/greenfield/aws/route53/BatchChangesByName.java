@@ -29,7 +29,7 @@ public class BatchChangesByName implements Collector<Change, List<ResourceRecord
 	@Override
 	public Function<List<ResourceRecordSet>, List<Change>> finisher() {
 		return list -> list.stream()
-				.collect(Collectors.groupingBy(ResourceRecordSet::getName))
+				.collect(Collectors.groupingBy(this::groupingKey))
 				.values().stream().filter(l -> !l.isEmpty()).map(l -> {
 					ResourceRecordSet rr = l.get(0);
 					rr.setResourceRecords(l.stream().flatMap(rrs -> rrs.getResourceRecords().stream())
@@ -41,6 +41,10 @@ public class BatchChangesByName implements Collector<Change, List<ResourceRecord
 	@Override
 	public Set<Characteristics> characteristics() {
 		return Collections.unmodifiableSet(EnumSet.of(Collector.Characteristics.UNORDERED));
+	}
+	
+	private String groupingKey(ResourceRecordSet rr) {
+		return rr.getName() + ":" + rr.getType();
 	}
 
 }
