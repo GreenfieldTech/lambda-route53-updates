@@ -60,6 +60,7 @@ public class EventHandler {
 		this.ec2instanceId = ec2InstanceId;
 		this.autoScalingGroupName = autoScalingGroupName;
 		this.message = message;
+		logger.info("Route 53 update lambda version " + Tools.getVersion());
 	}
 
 	/**
