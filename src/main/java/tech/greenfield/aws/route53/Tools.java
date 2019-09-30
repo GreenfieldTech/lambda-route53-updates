@@ -4,10 +4,11 @@ import static tech.greenfield.aws.Clients.autoscaling;
 import static tech.greenfield.aws.Clients.ec2;
 import static tech.greenfield.aws.Clients.route53;
 
-import java.io.PrintWriter;
-import java.io.StringWriter;
+import java.io.*;
 import java.util.List;
 import java.util.Objects;
+import java.util.jar.Attributes;
+import java.util.jar.Manifest;
 import java.util.logging.Logger;
 
 import com.amazonaws.services.autoscaling.model.DescribeAutoScalingGroupsRequest;
@@ -116,5 +117,20 @@ public class Tools {
 		t.printStackTrace(new PrintWriter(sw));
 		logger.severe(message + ": " + t.toString() + "\n" + sw.toString());
 	}
+	
+	public static String getVersion() {
+		try (InputStream stream = Tools.class.getClassLoader().getResourceAsStream("META-INF/MANIFEST.MF")) {
+			Manifest manifest = new Manifest(stream);
+			Attributes attr = manifest.getMainAttributes();
+			String version = attr.getValue("Version");
+			if (Objects.nonNull(version)) {
+				return version;
+			}
+		} catch (IOException e) {
+			System.err.println("Manifest was not found");
+		}
+		return "unknown";
+	}
+
 
 }
