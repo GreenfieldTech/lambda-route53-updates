@@ -89,6 +89,14 @@
 				<version>2.3</version>
 				<configuration>
 					<createDependencyReducedPom>false</createDependencyReducedPom>
+					<transformers>
+						<transformer
+							implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+							<manifestEntries>
+								<Version>${project.version}</Version>
+							</manifestEntries>
+						</transformer>
+					</transformers>
 				</configuration>
 				<executions>
 					<execution>
