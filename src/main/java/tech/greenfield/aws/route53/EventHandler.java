@@ -4,7 +4,7 @@ import static tech.greenfield.aws.Clients.ec2;
 import static tech.greenfield.aws.Clients.route53;
 
 import java.util.*;
-import java.util.logging.Logger;
+import java.util.logging.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -53,6 +53,12 @@ public class EventHandler {
 	
 	static {
 		s_mapper.configure(MapperFeature.ACCEPT_CASE_INSENSITIVE_PROPERTIES, true);
+		Logger root = Logger.getAnonymousLogger().getParent();
+		for (Handler h : root.getHandlers()) root.removeHandler(h);
+		System.setProperty("java.util.logging.SimpleFormatter.format", "%4$s: %2$s - %5$s %6$s%n");
+		ConsoleHandler con = new ConsoleHandler();
+		con.setFormatter(new SimpleFormatter());
+		root.addHandler(con);
 	}
 	
 	protected EventHandler(Context context, EventType eventType, String ec2InstanceId, String autoScalingGroupName, Route53Message message) {
