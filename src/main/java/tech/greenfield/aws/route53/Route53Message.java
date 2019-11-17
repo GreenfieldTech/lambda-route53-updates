@@ -11,6 +11,7 @@ import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.events.SNSEvent.SNSRecord;
 import com.amazonaws.services.route53.model.*;
 import com.amazonaws.services.sqs.model.Message;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.*;
 
 import tech.greenfield.aws.route53.eventhandler.AutoScaling;
@@ -31,8 +32,8 @@ public class Route53Message {
 	
 	public Route53Message(Message sqs) throws ParsingException {
 		body = retreiveBody(sqs.getBody());
-		if(Route53Message.isDebug())
-			logger.info("SQS message body: " + body);
+		logger.fine("SQS message body: " + json(body));
+		logger.fine("Request: " + String.valueOf(body.get("Message")));
 		readMetadata();
 	}
 
@@ -42,8 +43,7 @@ public class Route53Message {
 				metadata = s_mapper.readValue(String.valueOf(body.get("NotificationMetadata")), Metadata.class);
 			else
 				metadata = Metadata.fromEnvironment();
-			if(Route53Message.isDebug())
-				dumpConfiguration();
+			dumpConfiguration();
 		} catch (IOException e) {
 			throw new ParsingException(e);
 		}
@@ -51,18 +51,20 @@ public class Route53Message {
 	
 	public Route53Message(SNSRecord sns) throws ParsingException {
 		body = retreiveBody(sns.getSNS().getMessage());
-		if(Route53Message.isDebug())
-			logger.info("SNS message body: " + body);
+		logger.fine("SNS message body: " + body);
 		readMetadata();
 	}
 	
+	@SuppressWarnings("serial")
 	private void dumpConfiguration() {
-		logger.info("SRV_RECORD: " + metadata.getSRVSpec());
-		logger.info("SRV4_RECORD: " + metadata.getSRV4Spec());
-		logger.info("SRV6_RECORD: " + metadata.getSRV6Spec());
-		logger.info("DNSRR_RECORD: " + metadata.getRRSpec());
-		logger.info("DNSRR4_RECORD: " + metadata.getRR4Spec());
-		logger.info("DNSRR6_RECORD: " + metadata.getRR6Spec());
+		logger.fine(json(new HashMap<String,Object>() {{
+			put("SRV_RECORD",  metadata.getSRVSpec());
+			put("SRV4_RECORD", metadata.getSRV4Spec());
+			put("SRV6_RECORD", metadata.getSRV6Spec());
+			put("DNSRR_RECORD", metadata.getRRSpec());
+			put("DNSRR4_RECORD", metadata.getRR4Spec());
+			put("DNSRR6_RECORD", metadata.getRR6Spec());
+		}}));
 	}
 
 	@SuppressWarnings("unchecked")
@@ -313,4 +315,11 @@ public class Route53Message {
 				.collect(Collectors.toList());
 	}
 	
+	public static String json(Object data) {
+		try {
+			return s_mapper.writeValueAsString(data);
+		} catch (JsonProcessingException e) {
+			return "Error JSON mapping a value: " + e;
+		}
+	}
 }

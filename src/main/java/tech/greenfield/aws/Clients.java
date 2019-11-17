@@ -3,6 +3,7 @@ package tech.greenfield.aws;
 import static tech.greenfield.aws.Tools.getCreds;
 
 import java.util.Objects;
+import java.util.logging.Logger;
 
 import com.amazonaws.regions.Region;
 import com.amazonaws.regions.Regions;
@@ -42,6 +43,7 @@ public class Clients {
 	private static AmazonAutoScalingAsync autoscaling;
 	
 	private static Region region = Regions.getCurrentRegion();
+	private static Logger log = Logger.getLogger(Clients.class.getName());
 	
 	static {
 		if (Objects.isNull(region)) {
@@ -55,7 +57,7 @@ public class Clients {
 
 	synchronized public static AmazonRoute53 route53() {
 		if (Objects.isNull(r53)) {
-			System.err.println("Initializing Route53 client using " + Tools.getCredsProvider());
+			log.info("Initializing Route53 client using " + Tools.getCredsProvider());
 			r53 = AmazonRoute53ClientBuilder.standard().withCredentials(Tools.getCredsProvider())
 					.withRegion(region.getName())
 					.build();
@@ -65,7 +67,7 @@ public class Clients {
 
 	synchronized public static AmazonEC2 ec2() {
 		if (Objects.isNull(ec2)) {
-			System.err.println("Initializing EC2 client using " + getCreds());
+			log.info("Initializing EC2 client using " + getCreds());
 			ec2 = AmazonEC2ClientBuilder.standard().withCredentials(Tools.getCredsProvider())
 					.withRegion(region.getName()).build();
 		}
@@ -74,7 +76,7 @@ public class Clients {
 	
 	synchronized public static AmazonAutoScalingAsync autoscaling() {
 		if (Objects.isNull(autoscaling)) {
-			System.err.println("Initializing AutoScaling client using " + getCreds());
+			log.info("Initializing AutoScaling client using " + getCreds());
 			autoscaling = AmazonAutoScalingAsyncClientBuilder.standard().withCredentials(Tools.getCredsProvider())
 					.withRegion(region.getName()).build();
 		}
