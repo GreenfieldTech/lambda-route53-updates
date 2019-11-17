@@ -29,8 +29,8 @@ public class NotifyRecordsSqs extends BaseNotifyRecords implements RequestHandle
 			List<Message> messages = new ArrayList<>();
 			for (int i = 0; i < 10; i++) {
 				messages = getMessages();
-				if(Route53Message.isDebug())
-					logger.info("Handling " + messages.size() + " messages from queue.");
+				if(!messages.isEmpty())
+					logger.fine("Handling " + messages.size() + " messages from queue.");
 				if(!messages.isEmpty())
 					break;
 				Thread.sleep(300);
@@ -44,8 +44,7 @@ public class NotifyRecordsSqs extends BaseNotifyRecords implements RequestHandle
 					logger.severe("Original message: " + message.getBody());
 				} 
 				deleteMessage(message.getReceiptHandle());
-				if(Route53Message.isDebug())
-					logger.info("Deleted message");
+				logger.fine("Deleted message");
 			}
 		} catch (InterruptedException | IOException e) {
 			Tools.logException(logger, "Couldn't get/handle sqs messages", e);

@@ -4,7 +4,7 @@ import static tech.greenfield.aws.Clients.ec2;
 import static tech.greenfield.aws.Clients.route53;
 
 import java.util.*;
-import java.util.logging.Logger;
+import java.util.logging.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -60,7 +60,6 @@ public class EventHandler {
 		this.ec2instanceId = ec2InstanceId;
 		this.autoScalingGroupName = autoScalingGroupName;
 		this.message = message;
-		logger.info("Route 53 update lambda version " + Tools.getVersion());
 	}
 
 	/**
@@ -78,6 +77,7 @@ public class EventHandler {
 				break;
 			default: // do nothing in case of launch error or test notification
 			}
+			logger.info("Done updating Route 53");
 		} catch (NoIpException e) {
 			logger.warning("Error: " + e.getMessage());
 			logger.warning("No IP was found, starting plan B - update all instances");
@@ -95,8 +95,7 @@ public class EventHandler {
 			.collect(Collectors.toList());
 		
 		ChangeBatch changes = instances.isEmpty() ? message.getDeleteChanges() : message.getUpsertChanges(instances);
-		if (Route53Message.isDebug())
-			logger.info("Sending DNS change request: " + changes);
+		logger.fine("Sending DNS change request: " + changes);
 		try {
 			ChangeResourceRecordSetsRequest req = new ChangeResourceRecordSetsRequest(Route53Message.getHostedZoneId(), changes);
 			Tools.waitFor(route53().changeResourceRecordSets(req));
@@ -116,8 +115,7 @@ public class EventHandler {
 		logger.info("Registering " + ec2InstanceId + " - " + Tools.getIPAddress(i));
 		ChangeBatch cb = message.getUpsertChanges(i);
 		
-		if (Route53Message.isDebug())
-			logger.info("Adding instance with addresses: " + cb);
+		logger.fine("Adding instance with addresses: " + cb);
 
 		for (Change c : cb.getChanges()) {
 			ResourceRecordSet rr = c.getResourceRecordSet();
@@ -128,8 +126,7 @@ public class EventHandler {
 					.distinct().collect(Collectors.toList()));
 		}
 		ChangeResourceRecordSetsRequest req = new ChangeResourceRecordSetsRequest(Route53Message.getHostedZoneId(), cb);
-		if (Route53Message.isDebug())
-			logger.info("Sending rr change request: " + req);
+		logger.fine("Sending rr change request: " + req);
 		Tools.waitFor(route53().changeResourceRecordSets(req));
 	}
 	
@@ -148,8 +145,7 @@ public class EventHandler {
 			return;
 		}
 		ChangeResourceRecordSetsRequest req = new ChangeResourceRecordSetsRequest(Route53Message.getHostedZoneId(), changes);
-		if (Route53Message.isDebug())
-			logger.fine("Sending rr change request: " + req);
+		logger.fine("Sending rr change request: " + req);
 		Tools.waitFor(route53().changeResourceRecordSets(req));
 	}
 	

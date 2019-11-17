@@ -7,8 +7,6 @@ import static tech.greenfield.aws.Clients.route53;
 import java.io.*;
 import java.util.List;
 import java.util.Objects;
-import java.util.jar.Attributes;
-import java.util.jar.Manifest;
 import java.util.logging.Logger;
 
 import com.amazonaws.services.autoscaling.model.DescribeAutoScalingGroupsRequest;
@@ -37,6 +35,8 @@ import com.amazonaws.services.route53.model.*;
  */
 public class Tools {
 	private static final long WAIT_PULSE = 250;
+	
+	private static Logger log = Logger.getLogger(Tools.class.getName());
 
 	/**
 	 * Wait until the specified change request has been applied on Route53 servers
@@ -72,8 +72,7 @@ public class Tools {
 				.withStartRecordType(type)
 				.withMaxItems("1");
 		ListResourceRecordSetsResult res = route53().listResourceRecordSets(req);
-		if (Route53Message.isDebug()) 
-			System.err.println("Got recordset for " + hostname + ":" + type +" - " + res);
+		log.fine("Got recordset for " + hostname + ":" + type +" - " + res);
 		return res.getResourceRecordSets().stream()
 				.filter(rr -> rr.getName().equals(domainname))
 				.filter(rr -> rr.getType().equals(type))
@@ -119,18 +118,12 @@ public class Tools {
 	}
 	
 	public static String getVersion() {
-		try (InputStream stream = Tools.class.getClassLoader().getResourceAsStream("META-INF/MANIFEST.MF")) {
-			Manifest manifest = new Manifest(stream);
-			Attributes attr = manifest.getMainAttributes();
-			String version = attr.getValue("Version");
-			if (Objects.nonNull(version)) {
-				return version;
-			}
+		try (BufferedReader version = new BufferedReader(new InputStreamReader(Tools.class.getClassLoader().getResourceAsStream("version.txt")))) {
+			return version.readLine().trim();
 		} catch (IOException e) {
-			System.err.println("Manifest was not found");
+			Logger.getAnonymousLogger().severe("Version file was not found");
 		}
 		return "unknown";
 	}
-
 
 }
