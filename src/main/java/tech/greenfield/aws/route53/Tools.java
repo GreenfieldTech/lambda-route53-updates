@@ -74,7 +74,10 @@ public class Tools {
 				.startRecordType(type)
 				.maxItems("1"))
 				.whenComplete((res,t) -> {
-					log.fine("Got recordset for " + domainname + ":" + type +" - " + res);
+					if (Objects.nonNull(t))
+						log.severe("Error getting record set for " + type + " " + domainname + ": " + t);
+					else
+						log.fine("Got recordset for " + domainname + ":" + type +" - " + res);
 				})
 				.thenApply(res -> res.resourceRecordSets().stream()
 				.filter(rr -> rr.name().equals(domainname))
