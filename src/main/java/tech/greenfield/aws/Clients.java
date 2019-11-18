@@ -5,13 +5,11 @@ import static tech.greenfield.aws.Tools.getCreds;
 import java.util.Objects;
 import java.util.logging.Logger;
 
-import com.amazonaws.regions.Region;
-import com.amazonaws.regions.Regions;
-import com.amazonaws.services.autoscaling.*;
-import com.amazonaws.services.ec2.AmazonEC2;
-import com.amazonaws.services.ec2.AmazonEC2ClientBuilder;
-import com.amazonaws.services.route53.AmazonRoute53;
-import com.amazonaws.services.route53.AmazonRoute53ClientBuilder;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.autoscaling.AutoScalingAsyncClient;
+import software.amazon.awssdk.services.ec2.Ec2AsyncClient;
+import software.amazon.awssdk.services.route53.Route53AsyncClient;
+import software.amazon.awssdk.services.sqs.SqsAsyncClient;
 
 /**
  * AWS SDK clients helper
@@ -38,49 +36,44 @@ import com.amazonaws.services.route53.AmazonRoute53ClientBuilder;
  */
 public class Clients {
 
-	static private AmazonRoute53 r53;
-	static private AmazonEC2 ec2;
-	private static AmazonAutoScalingAsync autoscaling;
+	private static Route53AsyncClient r53;
+	private static Ec2AsyncClient ec2;
+	private static AutoScalingAsyncClient autoscaling;
+	private static SqsAsyncClient sqs;
 	
-	private static Region region = Regions.getCurrentRegion();
 	private static Logger log = Logger.getLogger(Clients.class.getName());
 	
-	static {
-		if (Objects.isNull(region)) {
-			String defaultRegion = System.getenv("AWS_DEFAULT_REGION");
-			if (Objects.isNull(defaultRegion))
-				throw new RuntimeException("No default region find, hard coding ap-southeast-1");
-			else
-				region = Region.getRegion(Regions.fromName(defaultRegion));
-		}
-	}
-
-	synchronized public static AmazonRoute53 route53() {
+	synchronized public static Route53AsyncClient route53() {
 		if (Objects.isNull(r53)) {
 			log.info("Initializing Route53 client using " + Tools.getCredsProvider());
-			r53 = AmazonRoute53ClientBuilder.standard().withCredentials(Tools.getCredsProvider())
-					.withRegion(region.getName())
-					.build();
+			r53 = Route53AsyncClient.builder().credentialsProvider(Tools.getCredsProvider())
+					.region(Region.AWS_GLOBAL).build();
 		}
 		return r53;
 	}
 
-	synchronized public static AmazonEC2 ec2() {
+	synchronized public static Ec2AsyncClient ec2() {
 		if (Objects.isNull(ec2)) {
 			log.info("Initializing EC2 client using " + getCreds());
-			ec2 = AmazonEC2ClientBuilder.standard().withCredentials(Tools.getCredsProvider())
-					.withRegion(region.getName()).build();
+			ec2 = Ec2AsyncClient.builder().credentialsProvider(Tools.getCredsProvider()).build();
 		}
 		return ec2;
 	}
 	
-	synchronized public static AmazonAutoScalingAsync autoscaling() {
+	synchronized public static AutoScalingAsyncClient autoscaling() {
 		if (Objects.isNull(autoscaling)) {
 			log.info("Initializing AutoScaling client using " + getCreds());
-			autoscaling = AmazonAutoScalingAsyncClientBuilder.standard().withCredentials(Tools.getCredsProvider())
-					.withRegion(region.getName()).build();
+			autoscaling = AutoScalingAsyncClient.builder().credentialsProvider(Tools.getCredsProvider()).build();
 		}
 		return autoscaling;
+	}
+	
+	synchronized public static SqsAsyncClient sqs() {
+		if (Objects.isNull(sqs)) {
+			log.info("Initializing SQS client using " + getCreds());
+			sqs = SqsAsyncClient.builder().credentialsProvider(Tools.getCredsProvider()).build();
+		}
+		return sqs;
 	}
 	
 }

@@ -3,11 +3,12 @@ package tech.greenfield.aws.route53.eventhandler;
 import static tech.greenfield.aws.Clients.autoscaling;
 
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 
-import com.amazonaws.services.autoscaling.model.AmazonAutoScalingException;
-import com.amazonaws.services.autoscaling.model.CompleteLifecycleActionRequest;
 import com.amazonaws.services.lambda.runtime.Context;
 
+import software.amazon.awssdk.services.autoscaling.model.AutoScalingException;
 import tech.greenfield.aws.route53.EventHandler;
 import tech.greenfield.aws.route53.LifeCycleNotification;
 import tech.greenfield.aws.route53.Route53Message;
@@ -22,10 +23,13 @@ public class LifeCycle extends EventHandler {
 	}
 
 	@Override
-	public void handle() {
+	public CompletableFuture<Void> handle() {
 		String lifecycleActionToken = event.getLifecycleActionToken();
+		return super.handle().thenAccept(v -> handleLifecycleAction(lifecycleActionToken));
+	}
+	
+	private void handleLifecycleAction(String lifecycleActionToken) {
 		try {
-			super.handle();
 			// after handling the event, we need to invoke the life cycle action handler
 			// to complete the life cycle
 			if (Objects.isNull(lifecycleActionToken)) {
@@ -35,7 +39,7 @@ public class LifeCycle extends EventHandler {
 			logger.info("Completing life-cycle action with token " + lifecycleActionToken);
 			completeLifecycle(lifecycleActionToken, "CONTINUE");
 		} catch (Throwable e) {
-			logger.severe("Error in lifecycle event handlind, abandoning lifecycle with token " + lifecycleActionToken);
+			logger.severe("Error in lifecycle event handling, abandoning lifecycle with token " + lifecycleActionToken);
 			if (Objects.isNull(lifecycleActionToken))
 				logger.warning("Skipping lifecycle completion because there's no token");
 			else
@@ -49,18 +53,19 @@ public class LifeCycle extends EventHandler {
 	 * @param result The result of the life cycle action to publish
 	 * @return life cycle action result
 	 */
-	private void completeLifecycle(String lifecycleActionToken, String result) {
-		try {
-			autoscaling().completeLifecycleAction(new CompleteLifecycleActionRequest()
-					.withAutoScalingGroupName(event.getAutoScalingGroupName())
-					.withLifecycleHookName(event.getLifecycleHookName())
-					.withLifecycleActionToken(lifecycleActionToken)
-					.withLifecycleActionResult(result));
-		} catch (AmazonAutoScalingException e) {
-			if (e.getMessage().contains("No active Lifecycle Action found"))
-				return;
-			throw e;
-		}
+	private CompletableFuture<Void> completeLifecycle(String lifecycleActionToken, String result) {
+		return autoscaling().completeLifecycleAction(b -> b
+					.autoScalingGroupName(event.getAutoScalingGroupName())
+					.lifecycleHookName(event.getLifecycleHookName())
+					.lifecycleActionToken(lifecycleActionToken)
+					.lifecycleActionResult(result))
+				.<Void>thenApply(res -> null)
+				.exceptionally(t -> {
+					if (t instanceof AutoScalingException && 
+							t.getMessage().contains("No active Lifecycle Action found"))
+						return null;
+					throw new CompletionException(t);
+				});
 	}
 
 }

@@ -2,10 +2,7 @@ package tech.greenfield.aws;
 
 import java.util.Objects;
 
-import com.amazonaws.auth.AWSCredentials;
-import com.amazonaws.auth.AWSCredentialsProvider;
-import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
-import com.amazonaws.auth.profile.ProfileCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.*;
 
 /**
  * AWS integration utilities.
@@ -41,15 +38,15 @@ public class Tools {
 	 * by specifying the AWS_PROFILE environment variable
 	 * @return AWS credentials to use for accessing the AWS API
 	 */
-	public static AWSCredentials getCreds() {
-		return getCredsProvider().getCredentials();
+	public static AwsCredentials getCreds() {
+		return getCredsProvider().resolveCredentials();
 	}
 	
-	public static AWSCredentialsProvider getCredsProvider() {
+	public static AwsCredentialsProvider getCredsProvider() {
 		String forceProfile = System.getenv("AWS_PROFILE");
 		if (Objects.nonNull(forceProfile) && !forceProfile.isEmpty())
-			return new ProfileCredentialsProvider(forceProfile);
-		return DefaultAWSCredentialsProviderChain.getInstance();
+			return ProfileCredentialsProvider.create(forceProfile);
+		return DefaultCredentialsProvider.create();
 	}
 	
 }

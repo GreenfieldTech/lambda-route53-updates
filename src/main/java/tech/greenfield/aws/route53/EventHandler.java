@@ -4,17 +4,19 @@ import static tech.greenfield.aws.Clients.ec2;
 import static tech.greenfield.aws.Clients.route53;
 
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.function.Supplier;
 import java.util.logging.*;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
-import com.amazonaws.SdkBaseException;
-import com.amazonaws.services.ec2.model.DescribeInstancesRequest;
-import com.amazonaws.services.ec2.model.Instance;
 import com.amazonaws.services.lambda.runtime.Context;
-import com.amazonaws.services.route53.model.*;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+
+import software.amazon.awssdk.core.exception.SdkException;
+import software.amazon.awssdk.services.ec2.model.Instance;
+import software.amazon.awssdk.services.route53.model.*;
 
 /**
  * Handler for a single SNS event that was submitted to the lambda implementation
@@ -38,11 +40,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  */
 public class EventHandler {
 
-	@FunctionalInterface
-	public interface Route53UpdateTask {
-		void run() throws NoIpException;
-	}
-
 	static private ObjectMapper s_mapper = new ObjectMapper();
 	
 	protected Logger logger = Logger.getLogger(getClass().getName());
@@ -65,88 +62,102 @@ public class EventHandler {
 	/**
 	 * Event handler entry point
 	 */
-	public void handle() {
-		try {
-			switch (eventType) {
-			case EC2_INSTANCE_LAUNCH:
-				retryIfThrottled(() -> registerInstance(ec2instanceId));
-				break;
-			case EC2_INSTANCE_TERMINATE:
-			case EC2_INSTANCE_TERMINATE_ERROR:
-				retryIfThrottled(() -> deregisterInstance(ec2instanceId));
-				break;
-			default: // do nothing in case of launch error or test notification
-			}
-			logger.info("Done updating Route 53");
-		} catch (NoIpException e) {
-			logger.warning("Error: " + e.getMessage());
-			logger.warning("No IP was found, starting plan B - update all instances");
-			rebuildAllRRs(this.autoScalingGroupName);
-		} catch (SilentFailure | SdkBaseException e) {
-			Tools.logException(logger, "Silently failing Route53 update", e);
+	public CompletableFuture<Void> handle() {
+		return handleEventType()
+				.thenApply(v -> CompletableFuture.<Void>completedFuture(null))
+				.exceptionally(t -> {
+					if (t instanceof NoIpException) {
+						logger.warning("Error: " + t.getMessage());
+						logger.warning("No IP was found, starting plan B - update all instances");
+						return rebuildAllRRs(this.autoScalingGroupName);
+					} else if (t instanceof SilentFailure) {
+						Tools.logException(logger, "Silently failing Route53 update", t);
+						return CompletableFuture.completedFuture(null);
+					} else if (Objects.nonNull(t)) {
+						CompletableFuture<Void> fail = new CompletableFuture<>();
+						fail.completeExceptionally(t);
+						return fail;
+					}
+					return CompletableFuture.completedFuture(null);
+				}).thenCompose(f -> f);
+	}
+
+	private CompletableFuture<Void> handleEventType() {
+		switch (eventType) {
+		case EC2_INSTANCE_LAUNCH:
+			return retryIfThrottled(() -> registerInstance(ec2instanceId));
+		case EC2_INSTANCE_TERMINATE:
+		case EC2_INSTANCE_TERMINATE_ERROR:
+			return retryIfThrottled(() -> deregisterInstance(ec2instanceId));
+		default: // do nothing in case of launch error or test notification
+			logger.info("Unrecognized event type '" + eventType + "', ignoring");
+			return CompletableFuture.completedFuture(null);
 		}
 	}
 	
-	private void rebuildAllRRs(String asgName) {
-		List<Instance> instances = Tools.getASGInstances(asgName).stream()
-			.filter(i -> i.getHealthStatus().equals("Healthy"))
-			.map(Tools::asInstanceToEC2)
-			.filter(Objects::nonNull)
-			.collect(Collectors.toList());
-		
-		ChangeBatch changes = instances.isEmpty() ? message.getDeleteChanges() : message.getUpsertChanges(instances);
-		logger.fine("Sending DNS change request: " + changes);
-		try {
-			ChangeResourceRecordSetsRequest req = new ChangeResourceRecordSetsRequest(Route53Message.getHostedZoneId(), changes);
-			Tools.waitFor(route53().changeResourceRecordSets(req));
-		} catch (IllegalArgumentException e) {
-			Tools.logException(logger, "Error in submitting Route53 update",e);
-			throw new SdkBaseException(e);
-		}
+	private CompletableFuture<Void> rebuildAllRRs(String asgName) {
+		return Tools.getASGInstances(asgName)
+				.thenCompose(l -> l.stream()
+						.filter(i -> i.healthStatus().equalsIgnoreCase("healthy"))
+						.map(Tools::asInstanceToEC2)
+						.collect(new CompletableFutureListCollector<>()))
+				.thenApply(l -> l.stream()
+						.filter(Objects::nonNull)
+						.collect(Collectors.toList()))
+				.thenCompose(instances -> instances.isEmpty() ? 
+						CompletableFuture.completedFuture(message.getDeleteChanges()) : message.getUpsertChanges(instances))
+				.whenComplete((changes, t) -> logger.fine("Sending DNS change request: " + changes))
+				.thenCompose(changes -> route53()
+						.changeResourceRecordSets(b -> b.hostedZoneId(Route53Message.getHostedZoneId()).changeBatch(changes)))
+				.thenCompose(res -> Tools.waitFor(res.changeInfo()))
+				.exceptionally(t -> {
+					Tools.logException(logger, "Error in submitting Route53 update",t);
+					throw new CompletionException(SdkException.builder().cause(t).build());
+				});
 	}
 
 	/**
 	 * Start an DNS registration for the launched instance
 	 * @param ec2InstanceId instance ID of instance that needs to be registered
 	 * @param ttl TTL in seconds to use when creating a new record
+	 * @return 
 	 */
-	private void registerInstance(String ec2InstanceId) throws NoIpException{
-		Instance i = getInstance(ec2InstanceId);
-		logger.info("Registering " + ec2InstanceId + " - " + Tools.getIPAddress(i));
-		ChangeBatch cb = message.getUpsertChanges(i);
-		
-		logger.fine("Adding instance with addresses: " + cb);
-
-		for (Change c : cb.getChanges()) {
-			ResourceRecordSet rr = c.getResourceRecordSet();
-			ResourceRecordSet oldrr = Tools.getRecordSet(rr.getName(), rr.getType());
-			if (Objects.isNull(oldrr))
-				continue;
-			rr.setResourceRecords(Stream.concat(oldrr.getResourceRecords().stream(), rr.getResourceRecords().stream())
-					.distinct().collect(Collectors.toList()));
-		}
-		ChangeResourceRecordSetsRequest req = new ChangeResourceRecordSetsRequest(Route53Message.getHostedZoneId(), cb);
-		logger.fine("Sending rr change request: " + req);
-		Tools.waitFor(route53().changeResourceRecordSets(req));
+	private CompletableFuture<Void> registerInstance(String ec2InstanceId) {
+		return getInstance(ec2InstanceId)
+				.thenCompose(i -> {
+					logger.info("Registering " + ec2InstanceId + " - " + Tools.getIPAddress(i));
+					return message.getUpsertChanges(i);
+				})
+				.thenCompose(cb -> {
+					logger.fine("Adding instance with addresses: " + cb);
+					return route53().changeResourceRecordSets(b -> b.hostedZoneId(Route53Message.getHostedZoneId())
+							.changeBatch(cb).build());
+				})
+				.thenCompose(res -> Tools.waitFor(res.changeInfo()));
 	}
 	
 	/**
 	 * Start a DNS re-registration for the terminated instance
 	 * @param ec2InstanceId instance ID of instance that needs to be de-registered
 	 * @param ttl TTL in seconds to use when creating a new record
-	 * @throws NoIpException 
+	 * @return 
 	 */
-	private void deregisterInstance(String ec2InstanceId) throws NoIpException {
-		Instance i = getInstance(ec2InstanceId);
-		logger.info("Deregistering " + ec2InstanceId + " - " + Tools.getIPAddress(i));
-		ChangeBatch changes = message.getRemoveChanges(i);
-		if (changes.getChanges().isEmpty()) {
-			logger.info("Nothing to remove");
-			return;
-		}
-		ChangeResourceRecordSetsRequest req = new ChangeResourceRecordSetsRequest(Route53Message.getHostedZoneId(), changes);
-		logger.fine("Sending rr change request: " + req);
-		Tools.waitFor(route53().changeResourceRecordSets(req));
+	private CompletableFuture<Void> deregisterInstance(String ec2InstanceId) {
+		return getInstance(ec2InstanceId)
+				.thenCompose(i -> {
+					logger.info("Deregistering " + ec2InstanceId + " - " + Tools.getIPAddress(i));
+					return message.getRemoveChanges(i);
+				})
+				.thenCompose(changes -> {
+					if (changes.changes().isEmpty()) {
+						logger.info("Nothing to remove");
+						return CompletableFuture.completedFuture(null);
+					}
+					logger.fine("Sending rr change request: " + changes);
+					return route53().changeResourceRecordSets(b -> b
+							.hostedZoneId(Route53Message.getHostedZoneId()).changeBatch(changes))
+							.thenCompose(res -> Tools.waitFor(res.changeInfo()));
+				});
 	}
 	
 	/**
@@ -155,34 +166,30 @@ public class EventHandler {
 	 * @return EC2 instance found
 	 * @throws RuntimeException in case no instance with the specified ID was found
 	 */
-	private Instance getInstance(String ec2InstanceId) {
-		return ec2().describeInstances(
-				new DescribeInstancesRequest().withInstanceIds(ec2InstanceId))
-				.getReservations().stream()
-				.flatMap(r -> r.getInstances().stream())
-				.findFirst()
-				.orElseThrow(() -> new RuntimeException(
-						"Failed to locate instance " + ec2InstanceId));
+	private CompletableFuture<Instance> getInstance(String ec2InstanceId) {
+		return ec2().describeInstances(b -> b.instanceIds(ec2InstanceId))
+				.thenApply(res -> res.reservations().stream()
+						.flatMap(r -> r.instances().stream())
+						.findFirst()
+						.orElseThrow(() -> new CompletionException(new Exception("Failed to locate instance " + ec2InstanceId))));
 	}
 
-	private void retryIfThrottled(Route53UpdateTask action) throws NoIpException {
-		while (true) {
-			try {
-				action.run();
-				return;
-			} catch (AmazonRoute53Exception e) {
-				// retry in case of 
-				if (e.getMessage().contains("Rate exceeded")) {
-					logger.info("Throttled: " + e);
-					try {
-						Thread.sleep(2000);
-						logger.info("Retrying...");
-					} catch (InterruptedException e1) { }
-					continue;
-				} else
-					throw e;
-			}
-		}
+	private CompletableFuture<Void> retryIfThrottled(Supplier<CompletableFuture<Void>> action) {
+		return action.get()
+				.thenApply(v -> CompletableFuture.<Void>completedFuture(null))
+				.exceptionally(t -> {
+					if (t instanceof Route53Exception) {
+						// retry in case of 
+						if (t.getMessage().contains("Rate exceeded")) {
+							logger.info("Throttled: " + t);
+							return CompletableFuture.runAsync(Tools.delay(2000))
+									.thenRun(() -> logger.info("Retrying..."))
+									.thenCompose(v -> retryIfThrottled(action));
+						}
+					}
+					throw new CompletionException(t);
+				})
+				.thenCompose(f -> f);
 	}
 	
 }
