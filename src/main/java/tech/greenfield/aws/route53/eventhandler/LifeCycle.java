@@ -25,27 +25,27 @@ public class LifeCycle extends EventHandler {
 	@Override
 	public CompletableFuture<Void> handle() {
 		String lifecycleActionToken = event.getLifecycleActionToken();
-		return super.handle().thenAccept(v -> handleLifecycleAction(lifecycleActionToken));
+		return super.handle().thenCompose(v -> handleLifecycleAction(lifecycleActionToken));
 	}
 	
-	private void handleLifecycleAction(String lifecycleActionToken) {
-		try {
-			// after handling the event, we need to invoke the life cycle action handler
-			// to complete the life cycle
-			if (Objects.isNull(lifecycleActionToken)) {
-				logger.info("Skipping lifecycle completion because there's no token");
-				return;
-			}
-			logger.info("Completing life-cycle action with token " + lifecycleActionToken);
-			completeLifecycle(lifecycleActionToken, "CONTINUE");
-		} catch (Throwable e) {
-			logger.severe("Error in lifecycle event handling, abandoning lifecycle with token " + lifecycleActionToken);
-			if (Objects.isNull(lifecycleActionToken))
-				logger.warning("Skipping lifecycle completion because there's no token");
-			else
-				completeLifecycle(lifecycleActionToken, "ABANDON");
-			throw e;
+	private CompletableFuture<Void> handleLifecycleAction(String lifecycleActionToken) {
+		// after handling the event, we need to invoke the life cycle action handler
+		// to complete the life cycle
+		if (Objects.isNull(lifecycleActionToken)) {
+			logger.info("Skipping lifecycle completion because there's no token");
+			return CompletableFuture.completedFuture(null);
 		}
+		logger.info("Completing life-cycle action with token " + lifecycleActionToken);
+		return completeLifecycle(lifecycleActionToken, "CONTINUE")
+				.thenApply(v -> CompletableFuture.<Void>completedFuture(null))
+				.exceptionally(e -> {
+					logger.severe("Error in lifecycle event handling, abandoning lifecycle with token " + lifecycleActionToken + ": " + e);
+					if (Objects.nonNull(lifecycleActionToken))
+						return completeLifecycle(lifecycleActionToken, "ABANDON");
+					logger.warning("Skipping lifecycle completion because there's no token");
+					return CompletableFuture.completedFuture(null);
+				})
+				.thenCompose(ft -> ft);
 	}
 
 	/**
