@@ -15,10 +15,11 @@ public class BaseNotifyRecords {
 	
 	@SuppressWarnings("serial")
 	private Map<String,Level> loggerLevels = new HashMap<String, Level>() {{
-		put("", Level.ALL);
-		put("org.apache", Level.INFO);
+		put("", Level.INFO);
 		put("com.amazonaws", Level.INFO);
 		put("com.sun", Level.INFO);
+		put("io.netty", Level.INFO);
+		put("org.apache", Level.INFO);
 		put("tech.greenfield", Route53Message.isDebug() ? Level.ALL : Level.INFO);
 	}};
 

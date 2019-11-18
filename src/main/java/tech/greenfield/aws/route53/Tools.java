@@ -7,11 +7,11 @@ import static tech.greenfield.aws.Clients.route53;
 import java.io.*;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 import java.util.logging.Logger;
 
-import com.amazonaws.services.autoscaling.model.DescribeAutoScalingGroupsRequest;
-import com.amazonaws.services.ec2.model.DescribeInstancesRequest;
-import com.amazonaws.services.route53.model.*;
+import software.amazon.awssdk.services.ec2.model.Instance;
+import software.amazon.awssdk.services.route53.model.*;
 
 /**
  * Route53 integration utilities
@@ -34,7 +34,7 @@ import com.amazonaws.services.route53.model.*;
  *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 public class Tools {
-	private static final long WAIT_PULSE = 250;
+	private static final long WAIT_PULSE = 1500;
 	
 	private static Logger log = Logger.getLogger(Tools.class.getName());
 
@@ -42,16 +42,18 @@ public class Tools {
 	 * Wait until the specified change request has been applied on Route53 servers
 	 * @param reqRes the result of submitting a change request
 	 */
-	public static void waitFor(ChangeResourceRecordSetsResult reqRes) {
-		ChangeInfo ci = reqRes.getChangeInfo();
-		while (ci.getStatus().equals("PENDING")) {
+	public static CompletableFuture<Void> waitFor(ChangeInfo ci) {
+		if (ci.status() != ChangeStatus.PENDING)
+			return CompletableFuture.completedFuture(null);
+		log.fine("Still waiting for " + ci.id());
+		return CompletableFuture.runAsync(() -> {
 			synchronized (ci) {
 				try {
 					ci.wait(WAIT_PULSE);
 				} catch (InterruptedException e) { }
-			}
-			ci = route53().getChange(new GetChangeRequest(ci.getId())).getChangeInfo();
-		}
+			}})
+				.thenCompose(v -> route53().getChange(b -> b.id(ci.id())))
+				.thenCompose(r -> waitFor(r.changeInfo())); 
 	}
 
 	/**
@@ -62,53 +64,54 @@ public class Tools {
 	 * @param type RR type of record to retrieve
 	 * @return The record set retrieved from Route53 or an empty record set 
 	 */
-	public static ResourceRecordSet getRecordSet(String hostname, String type) {
+	public static CompletableFuture<ResourceRecordSet> getRecordSet(String hostname, RRType type) {
 		if (!hostname.endsWith("."))
 			hostname = hostname + ".";
 		final String domainname = hostname;
-		ListResourceRecordSetsRequest req = new ListResourceRecordSetsRequest()
-				.withHostedZoneId(Route53Message.getHostedZoneId())
-				.withStartRecordName(hostname)
-				.withStartRecordType(type)
-				.withMaxItems("1");
-		ListResourceRecordSetsResult res = route53().listResourceRecordSets(req);
-		log.fine("Got recordset for " + hostname + ":" + type +" - " + res);
-		return res.getResourceRecordSets().stream()
-				.filter(rr -> rr.getName().equals(domainname))
-				.filter(rr -> rr.getType().equals(type))
-				.findAny().orElse(null);
+		return route53().listResourceRecordSets(b -> b
+				.hostedZoneId(Route53Message.getHostedZoneId())
+				.startRecordName(domainname)
+				.startRecordType(type)
+				.maxItems("1"))
+				.whenComplete((res,t) -> {
+					log.fine("Got recordset for " + domainname + ":" + type +" - " + res);
+				})
+				.thenApply(res -> res.resourceRecordSets().stream()
+				.filter(rr -> rr.name().equals(domainname))
+				.filter(rr -> rr.type().equals(type))
+				.findAny().orElse(null));
 	}
 
-	static List<com.amazonaws.services.autoscaling.model.Instance> getASGInstances(String asgName) {
+	static CompletableFuture<List<software.amazon.awssdk.services.autoscaling.model.Instance>> getASGInstances(String asgName) {
 		return autoscaling()
-				.describeAutoScalingGroups(new DescribeAutoScalingGroupsRequest().withAutoScalingGroupNames(asgName))
-				.getAutoScalingGroups().get(0).getInstances();
+				.describeAutoScalingGroups(b -> b.autoScalingGroupNames(asgName))
+				.thenApply(res -> res.autoScalingGroups().get(0).instances());
 	}
 	
-	static com.amazonaws.services.ec2.model.Instance asInstanceToEC2(
-			com.amazonaws.services.autoscaling.model.Instance instance) {
-		return ec2().describeInstances(new DescribeInstancesRequest().withInstanceIds(instance.getInstanceId()))
-				.getReservations().stream().flatMap(r -> r.getInstances().stream()).findFirst().orElse(null);
+	static CompletableFuture<Instance> asInstanceToEC2(software.amazon.awssdk.services.autoscaling.model.Instance instance) {
+		return ec2().describeInstances(b -> b.instanceIds(instance.instanceId()))
+				.thenApply(res -> res.reservations().stream()
+						.flatMap(r -> r.instances().stream()).findFirst().orElse(null));
 	}
 
-	public static String getHostAddress(com.amazonaws.services.ec2.model.Instance i) throws NoIpException {
-		String addr = Route53Message.isPrivate() ? i.getPrivateDnsName() : i.getPublicDnsName();
+	public static String getHostAddress(Instance i) throws NoIpException {
+		String addr = Route53Message.isPrivate() ? i.privateDnsName() : i.publicDnsName();
 		if (Objects.nonNull(addr) && !addr.isEmpty())
 			return addr;
 		return getIPAddress(i);
 	}
 
-	public static String getIPAddress(com.amazonaws.services.ec2.model.Instance i) throws NoIpException {
+	public static String getIPAddress(Instance i) throws NoIpException {
 		try {
-			return Objects.requireNonNull(Route53Message.isPrivate() ? i.getPrivateIpAddress() : i.getPublicIpAddress());
+			return Objects.requireNonNull(Route53Message.isPrivate() ? i.privateIpAddress() : i.publicIpAddress());
 		} catch (NullPointerException e) {
 			throw new NoIpException("Cowardly refusing to add an instance " + i + " with no IP address");
 		}
 	}
 	
-	public static String getIPv6Address(com.amazonaws.services.ec2.model.Instance i) {
-		return i.getNetworkInterfaces().stream().flatMap(in -> in.getIpv6Addresses().stream()).findFirst()
-				.map(addr -> addr.getIpv6Address()).orElse(null);
+	public static String getIPv6Address(Instance i) {
+		return i.networkInterfaces().stream().flatMap(in -> in.ipv6Addresses().stream()).findFirst()
+				.map(addr -> addr.ipv6Address()).orElse(null);
 	}
 
 	public static void logException(Logger logger, String message, Throwable t) {
@@ -124,6 +127,16 @@ public class Tools {
 			Logger.getAnonymousLogger().severe("Version file was not found");
 		}
 		return "unknown";
+	}
+
+	
+	public static Runnable delay(long delay) {
+		return () -> {
+			try {
+				Thread.sleep(delay);
+			} catch (InterruptedException e) {
+			}
+		};
 	}
 
 }

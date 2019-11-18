@@ -5,7 +5,9 @@ import java.util.function.*;
 import java.util.stream.Collector;
 import java.util.stream.Collectors;
 
-import com.amazonaws.services.route53.model.*;
+import software.amazon.awssdk.services.route53.model.Change;
+import software.amazon.awssdk.services.route53.model.ChangeAction;
+import software.amazon.awssdk.services.route53.model.ResourceRecordSet;
 
 public class BatchChangesByName implements Collector<Change, List<ResourceRecordSet>, List<Change>> {
 
@@ -16,7 +18,7 @@ public class BatchChangesByName implements Collector<Change, List<ResourceRecord
 
 	@Override
 	public BiConsumer<List<ResourceRecordSet>, Change> accumulator() {
-		return (list, change) -> { list.add(change.getResourceRecordSet()); };
+		return (list, change) -> { list.add(change.resourceRecordSet()); };
 	}
 
 	@Override
@@ -31,7 +33,7 @@ public class BatchChangesByName implements Collector<Change, List<ResourceRecord
 				.values().stream()
 				.filter(l -> !l.isEmpty())
 				.map(this::mergeDupResourceRecordSets)
-				.map(rrs -> new Change(ChangeAction.UPSERT, rrs))
+				.map(rrs -> Change.builder().action(ChangeAction.UPSERT).resourceRecordSet(rrs).build())
 				.collect(Collectors.toList());
 	}
 
@@ -41,15 +43,14 @@ public class BatchChangesByName implements Collector<Change, List<ResourceRecord
 	}
 	
 	private String groupingKey(ResourceRecordSet rr) {
-		return rr.getName() + ":" + rr.getType();
+		return rr.name() + ":" + rr.type();
 	}
 	
 	private ResourceRecordSet mergeDupResourceRecordSets(List<ResourceRecordSet> lRRSets) {
-		ResourceRecordSet out = lRRSets.get(0).clone();
-		out.setResourceRecords(lRRSets.stream().flatMap(rrs -> rrs.getResourceRecords().stream())
-					.filter(rr -> Objects.nonNull(rr.getValue()))
+		return lRRSets.get(0).toBuilder()
+				.resourceRecords(lRRSets.stream().flatMap(rrs -> rrs.resourceRecords().stream())
+					.filter(rr -> Objects.nonNull(rr.value()))
 					.distinct()
-					.collect(Collectors.toList()));
-		return out;
+					.collect(Collectors.toList())).build();
 	}
 }

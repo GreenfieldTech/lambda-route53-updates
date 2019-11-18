@@ -2,18 +2,19 @@ package tech.greenfield.aws.route53;
 
 import java.io.IOException;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import com.amazonaws.services.ec2.model.Instance;
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.events.SNSEvent.SNSRecord;
-import com.amazonaws.services.route53.model.*;
-import com.amazonaws.services.sqs.model.Message;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.*;
 
+import software.amazon.awssdk.services.ec2.model.Instance;
+import software.amazon.awssdk.services.route53.model.*;
+import software.amazon.awssdk.services.sqs.model.Message;
 import tech.greenfield.aws.route53.eventhandler.AutoScaling;
 import tech.greenfield.aws.route53.eventhandler.LifeCycle;
 
@@ -31,7 +32,7 @@ public class Route53Message {
 	}
 	
 	public Route53Message(Message sqs) throws ParsingException {
-		body = retreiveBody(sqs.getBody());
+		body = retreiveBody(sqs.body());
 		logger.fine("SQS message body: " + json(body));
 		logger.fine("Request: " + String.valueOf(body.get("Message")));
 		readMetadata();
@@ -144,67 +145,89 @@ public class Route53Message {
 	}
 
 	public ChangeBatch getDeleteChanges() {
-		ChangeBatch out = new ChangeBatch();
+		ArrayList<Change> changes = new ArrayList<>();
 		if (useDNSRR())
-			out.getChanges().addAll(getDNSRRDeleteChanges());
+			changes.addAll(getDNSRRDeleteChanges());
 		if (useSRV())
-			out.getChanges().addAll(getSRVDeleteChanges());
-		return out;
+			changes.addAll(getSRVDeleteChanges());
+		return ChangeBatch.builder().changes(changes).build();
 	}
 
 	private List<Change> getDNSRRDeleteChanges() {
-		Stream<ResourceRecordSet> dnsrr = metadata.getRRSpec().stream()
-				.flatMap(addr -> Stream.of(RRType.A, RRType.AAAA).map(r -> new ResourceRecordSet(addr, r)));
-		Stream<ResourceRecordSet> dnsrr4 = metadata.getRR4Spec().stream()
-				.flatMap(addr -> Stream.of(RRType.A).map(r -> new ResourceRecordSet(addr, r)));
-		Stream<ResourceRecordSet> dnsrr6 = metadata.getRR6Spec().stream()
-				.flatMap(addr -> Stream.of(RRType.AAAA).map(r -> new ResourceRecordSet(addr, r)));
-		return Stream.concat(dnsrr, Stream.concat(dnsrr4, dnsrr6))
-				.map(rr -> new Change(ChangeAction.DELETE, rr))
+		return Stream.concat(metadata.getRRSpec().stream()
+				.flatMap(addr -> Stream.of(RRType.A, RRType.AAAA)
+						.map(r -> ResourceRecordSet.builder().name(addr).type(r).build())),
+				Stream.concat(metadata.getRR4Spec().stream()
+						.flatMap(addr -> Stream.of(RRType.A)
+								.map(r -> ResourceRecordSet.builder().name(addr).type(r).build())),
+						metadata.getRR6Spec().stream()
+						.flatMap(addr -> Stream.of(RRType.AAAA)
+								.map(r -> ResourceRecordSet.builder().name(addr).type(r).build()))))
+				.map(rr -> Change.builder().action(ChangeAction.DELETE).resourceRecordSet(rr).build())
 				.collect(Collectors.toList());
 	}
 	
 	private List<Change> getSRVDeleteChanges() {
-		Stream<ResourceRecordSet> srv = metadata.getSRVSpec().stream()
-				.map(s -> new ResourceRecordSet(s.addr, RRType.SRV));
-		Stream<ResourceRecordSet> srv4 = metadata.getSRV6Spec().stream()
-				.map(s -> new ResourceRecordSet(s.addr, RRType.SRV));
-		Stream<ResourceRecordSet> srv6 = metadata.getSRV4Spec().stream()
-				.map(s -> new ResourceRecordSet(s.addr, RRType.SRV));
-		return Stream.concat(srv, Stream.concat(srv4, srv6))
-				.map(rr -> new Change(ChangeAction.DELETE, rr))
+		return Stream.concat(metadata.getSRVSpec().stream(),
+				Stream.concat(metadata.getSRV6Spec().stream(), metadata.getSRV4Spec().stream()))
+				.map(s -> ResourceRecordSet.builder().name(s.addr).type(RRType.SRV).build())
+				.map(rr -> Change.builder().action(ChangeAction.DELETE).resourceRecordSet(rr).build())
 				.collect(Collectors.toList());
 	}
 
-	public ChangeBatch getUpsertChanges(List<Instance> instances) throws NoIpException {
-		return getUpsertChanges(instances.toArray(new Instance[] {}));
+	public CompletableFuture<ChangeBatch> getUpsertChanges(List<Instance> instances) throws NoIpException {
+		return getUpsertChanges(instances.toArray(new Instance[instances.size()]));
 	}
 	
-	public ChangeBatch getUpsertChanges(Instance... instances) throws NoIpException {
-		ChangeBatch out = new ChangeBatch();
+	public CompletableFuture<ChangeBatch> getUpsertChanges(Instance... instances) throws NoIpException {
+		ArrayList<Change> changes = new ArrayList<>();
 		if (useDNSRR())
 			for (Instance i : instances)
-				out.getChanges().addAll(getDNSRRUpsertChanges(i).stream().collect(new BatchChangesByName()));
+				changes.addAll(getDNSRRUpsertChanges(i).stream().collect(new BatchChangesByName()));
 		if (useSRV())
 			for (Instance i : instances)
-				out.getChanges().addAll(getSRVUpsertChanges(i).stream().collect(new BatchChangesByName()));
-		return out;
+				changes.addAll(getSRVUpsertChanges(i).stream().collect(new BatchChangesByName()));
+		// sync adds with existing records
+		return changes.stream()
+				.map(c -> { // resolve each "change" to a *promise* for new change that includes all existing records
+					ResourceRecordSet rr = c.resourceRecordSet();
+					return Tools.getRecordSet(rr.name(), rr.type())
+							.thenApply(oldrr -> {
+								if (Objects.isNull(oldrr)) // this is a new record, just use the generated change
+									return c;
+								else
+									return mergeChangeRRs(c, oldrr);
+							});
+				})
+				.collect(new CompletableFutureListCollector<>())
+				// compose a change batch including all changes
+				.thenApply(newchanges -> ChangeBatch.builder().changes(newchanges).build());
+	}
+
+	private Change mergeChangeRRs(Change c, ResourceRecordSet oldrr) {
+		HashSet<ResourceRecord> rrs = new HashSet<>(c.resourceRecordSet().resourceRecords());
+		rrs.addAll(oldrr.resourceRecords());
+		return c.toBuilder()
+				.resourceRecordSet(c.resourceRecordSet().toBuilder().resourceRecords(rrs).build())
+				.build();
 	}
 
 	private List<Change> getDNSRRUpsertChanges(Instance i) throws NoIpException {
 		String ipv4ip = Tools.getIPAddress(i);
 		String ipv6ip = Tools.getIPv6Address(i);
-		Stream<ResourceRecordSet> addrs = Stream.empty();
+		Stream.Builder<ResourceRecordSet> addrs = Stream.builder();
 		if (Objects.nonNull(ipv4ip))
-			addrs = Stream.concat(addrs, Stream.concat(metadata.getRRSpec().stream(), metadata.getRR4Spec().stream())
-					.map(addr -> new ResourceRecordSet().withType(RRType.A).withName(addr)
-							.withTTL(getTTL()).withResourceRecords(new ResourceRecord(ipv4ip))));
+			Stream.concat(metadata.getRRSpec().stream(), metadata.getRR4Spec().stream())
+					.map(addr -> ResourceRecordSet.builder().type(RRType.A).name(addr)
+							.ttl(getTTL()).resourceRecords(ResourceRecord.builder().value(ipv4ip).build()).build())
+					.forEach(addrs::add);
 		if (Objects.nonNull(ipv6ip))
-			addrs = Stream.concat(addrs, Stream.concat(metadata.getRRSpec().stream(), metadata.getRR6Spec().stream())
-					.map(addr -> new ResourceRecordSet().withType(RRType.AAAA).withName(addr)
-							.withTTL(getTTL()).withResourceRecords(new ResourceRecord(ipv6ip))));
-		return addrs
-				.map(rr -> new Change(ChangeAction.UPSERT, rr))
+			Stream.concat(metadata.getRRSpec().stream(), metadata.getRR6Spec().stream())
+					.map(addr -> ResourceRecordSet.builder().type(RRType.AAAA).name(addr)
+							.ttl(getTTL()).resourceRecords(ResourceRecord.builder().value(ipv6ip).build()).build())
+					.forEach(addrs::add);
+		return addrs.build()
+				.map(rr -> Change.builder().action(ChangeAction.UPSERT).resourceRecordSet(rr).build())
 				.collect(Collectors.toList());
 	}
 	
@@ -229,57 +252,72 @@ public class Route53Message {
 		
 		return map.entrySet().stream()
 				.map(ent -> 
-					new ResourceRecordSet().withType(RRType.SRV).withName(ent.getKey())
-						.withTTL(getTTL()).withResourceRecords(
+					ResourceRecordSet.builder().type(RRType.SRV).name(ent.getKey())
+						.ttl(getTTL()).resourceRecords(
 								ent.getValue().stream().map(s -> s.getResourceRecord(i)).collect(Collectors.toList())
-								)
+								).build()
 				)
-				.map(rr -> new Change(ChangeAction.UPSERT, rr))
+				.map(rr -> Change.builder().action(ChangeAction.UPSERT).resourceRecordSet(rr).build())
 				.collect(Collectors.toList());
 	}
 
-	public ChangeBatch getRemoveChanges(Instance i) throws NoIpException {
-		ChangeBatch out = new ChangeBatch();
+	public CompletableFuture<ChangeBatch> getRemoveChanges(Instance i) throws NoIpException {
+		Stream.Builder<CompletableFuture<List<Change>>> changes = Stream.builder();
 		if (useDNSRR()) {
-			out.getChanges().addAll(getDNSRR4RemoveChanges(i));
-			out.getChanges().addAll(getDNSRR6RemoveChanges(i));
+			changes.add(getDNSRR4RemoveChanges(i));
+			changes.add(getDNSRR6RemoveChanges(i));
 		}
 		if (useSRV())
-			out.getChanges().addAll(getSRVRemoveChanges(i));
-		return out;
+			changes.add(getSRVRemoveChanges(i));
+		return changes.build().collect(new CompletableFutureListCollector<>())
+				.thenApply(l -> l.stream().flatMap(l2 -> l2.stream()))
+				.thenApply(s -> s.collect(Collectors.toList()))
+				.thenApply(l -> ChangeBatch.builder().changes(l).build());
 	}
 	
-	private List<Change> getDNSRR4RemoveChanges(Instance i) throws NoIpException {
+	private CompletableFuture<List<Change>> getDNSRR4RemoveChanges(Instance i) throws NoIpException {
 		String ip = Tools.getIPAddress(i);
 		return Stream.concat(metadata.getRRSpec().stream(), metadata.getRR4Spec().stream())
-				.map(s -> Tools.getRecordSet(s, RRType.A.toString()))
-				.filter(Objects::nonNull)
-				.map(rr -> {
-					if (Objects.isNull(rr))
-						return null;
-					if (rr.getResourceRecords().size() == 1 && rr.getResourceRecords().get(0).getValue().equals(ip))
-						return new Change(ChangeAction.DELETE, rr);
-					rr.getResourceRecords().removeIf(r -> r.getValue().equals(ip));
-					return new Change(ChangeAction.UPSERT, rr);
-				})
-				.collect(Collectors.toList());
+				.map(s -> Tools.getRecordSet(s, RRType.A))
+				.collect(new CompletableFutureListCollector<>())
+				.thenApply(l -> l.stream()
+						.map(rr -> {
+							if (Objects.isNull(rr))
+								return null;
+							if (rr.resourceRecords().size() == 1 && rr.resourceRecords().get(0).value().equals(ip))
+								return Change.builder().action(ChangeAction.DELETE).resourceRecordSet(rr).build();
+							HashSet<ResourceRecord> rrs = new HashSet<>(rr.resourceRecords());
+							if (rrs.removeIf(r -> r.value().equals(ip)))
+								return Change.builder().action(ChangeAction.UPSERT)
+										.resourceRecordSet(rr.toBuilder().resourceRecords(rrs).build()).build();
+							return null;
+						})
+						.filter(Objects::nonNull)
+						.collect(Collectors.toList()));
 	}
 	
-	private List<Change> getDNSRR6RemoveChanges(Instance i) throws NoIpException {
+	private CompletableFuture<List<Change>> getDNSRR6RemoveChanges(Instance i) throws NoIpException {
 		String ip = Tools.getIPv6Address(i);
 		return Stream.concat(metadata.getRRSpec().stream(), metadata.getRR6Spec().stream())
-				.map(s -> Tools.getRecordSet(s, RRType.AAAA.toString()))
-				.filter(Objects::nonNull)
-				.map(rr -> {
-					if (rr.getResourceRecords().size() == 1 && rr.getResourceRecords().get(0).getValue().equals(ip))
-						return new Change(ChangeAction.DELETE, rr);
-					rr.getResourceRecords().removeIf(r -> r.getValue().equals(ip));
-					return new Change(ChangeAction.UPSERT, rr);
-				})
-				.collect(Collectors.toList());
+				.map(s -> Tools.getRecordSet(s, RRType.AAAA))
+				.collect(new CompletableFutureListCollector<>())
+				.thenApply(l -> l.stream()
+						.map(rr -> {
+							if (Objects.isNull(rr))
+								return null;
+							if (rr.resourceRecords().size() == 1 && rr.resourceRecords().get(0).value().equals(ip))
+								return Change.builder().action(ChangeAction.DELETE).resourceRecordSet(rr).build();
+							HashSet<ResourceRecord> rrs = new HashSet<>(rr.resourceRecords());
+							if (rrs.removeIf(r -> r.value().equals(ip)))
+								return Change.builder().action(ChangeAction.UPSERT)
+										.resourceRecordSet(rr.toBuilder().resourceRecords(rrs).build()).build();
+							return null;
+						})
+						.filter(Objects::nonNull)
+						.collect(Collectors.toList()));
 	}
 	
-	private List<Change> getSRVRemoveChanges(Instance i) throws NoIpException {
+	private CompletableFuture<List<Change>> getSRVRemoveChanges(Instance i) throws NoIpException {
 		String host = Tools.getHostAddress(i);
 		HashMap<String, List<SRVTemplate>> map = new HashMap<String, List<SRVTemplate>>() {
 			private static final long serialVersionUID = 1L;
@@ -299,20 +337,22 @@ public class Route53Message {
 		for (SRVTemplate s : metadata.getSRV6Spec())
 			map.get(s.addr).add(s);
 		return map.entrySet().stream()
-				.map(ent -> {
-					ResourceRecordSet rr = Tools.getRecordSet(ent.getKey(), RRType.SRV.toString());
-					if (Objects.isNull(rr))
-						return null;
-					ArrayList<ResourceRecord> newRRs = new ArrayList<>(rr.getResourceRecords());
-					for (SRVTemplate s : ent.getValue())
-						newRRs.remove(s.getResourceRecord(host));
-					if (newRRs.isEmpty())
-						return new Change(ChangeAction.DELETE, rr);
-					rr.setResourceRecords(newRRs);
-					return new Change(ChangeAction.UPSERT, rr);
-				})
-				.filter(Objects::nonNull)
-				.collect(Collectors.toList());
+				.map(ent -> Tools.getRecordSet(ent.getKey(), RRType.SRV)
+						.thenApply(rr -> {
+							if (Objects.isNull(rr))
+								return null;
+							ArrayList<ResourceRecord> newRRs = new ArrayList<>(rr.resourceRecords());
+							for (SRVTemplate s : ent.getValue())
+								newRRs.remove(s.getResourceRecord(host));
+							if (newRRs.isEmpty())
+								return Change.builder().action(ChangeAction.DELETE).resourceRecordSet(rr).build();
+							return Change.builder().action(ChangeAction.UPSERT)
+									.resourceRecordSet(rr.toBuilder().resourceRecords(newRRs).build()).build();
+						}))
+				.collect(new CompletableFutureListCollector<>())
+				.thenApply(l -> l.stream()
+						.filter(Objects::nonNull)
+						.collect(Collectors.toList()));
 	}
 	
 	public static String json(Object data) {

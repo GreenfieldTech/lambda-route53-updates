@@ -10,10 +10,6 @@ import java.util.AbstractMap.SimpleEntry;
 
 import org.junit.Test;
 
-import com.amazonaws.services.route53.model.ChangeBatch;
-import com.amazonaws.services.route53.model.ChangeResourceRecordSetsRequest;
-import com.amazonaws.services.route53.model.RRType;
-
 import tech.greenfield.aws.route53.Route53Message;
 import tech.greenfield.aws.route53.Tools;
 

@@ -3,11 +3,12 @@ package tech.greenfield.aws.route53;
 import java.util.List;
 import java.util.Objects;
 
-import com.amazonaws.AmazonClientException;
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.events.SNSEvent;
 import com.amazonaws.services.lambda.runtime.events.SNSEvent.SNSRecord;
+
+import software.amazon.awssdk.core.exception.SdkException;
 
 /**
  * Main entry point from the AWS Lambda engine, that takes an SNS event
@@ -51,7 +52,7 @@ public class NotifyRecordsSns extends BaseNotifyRecords implements RequestHandle
 			} catch (ParsingException e) {
 				Tools.logException(logger, "Error parsing incoming message", e);
 				logger.severe("Original message: " + r.getSNS().getMessage());
-			} catch (AmazonClientException e) {
+			} catch (SdkException e) {
 				Tools.logException(logger, "Error from Amazon client", e);
 			}
 		}
