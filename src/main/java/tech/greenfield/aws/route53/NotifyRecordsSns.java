@@ -2,13 +2,13 @@ package tech.greenfield.aws.route53;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.events.SNSEvent;
 import com.amazonaws.services.lambda.runtime.events.SNSEvent.SNSRecord;
-
-import software.amazon.awssdk.core.exception.SdkException;
 
 /**
  * Main entry point from the AWS Lambda engine, that takes an SNS event
@@ -46,20 +46,31 @@ public class NotifyRecordsSns extends BaseNotifyRecords implements RequestHandle
 			logger.warning("No SNS events in input");
 			return Response.error("no SNS events");
 		}
+		CompletableFuture<Void> res = CompletableFuture.completedFuture(null);
 		for (SNSRecord r : records) {
-			try {
-				new Route53Message(r).createEventHandler(context).handle();
-			} catch (ParsingException e) {
-				Tools.logException(logger, "Error parsing incoming message", e);
-				logger.severe("Original message: " + r.getSNS().getMessage());
-			} catch (SdkException e) {
-				Tools.logException(logger, "Error from Amazon client", e);
-			}
+			res = res.thenCompose(v -> {
+				try {
+					return new Route53Message(r).createEventHandler(context).handle();
+				} catch (ParsingException e) {
+					Tools.logException(logger, "Error parsing incoming message", e);
+					logger.severe("Original message: " + r.getSNS().getMessage());
+					return CompletableFuture.completedFuture(null);
+				}
+			})
+			.exceptionally(t -> {
+				if (Objects.nonNull(t))
+					Tools.logException(logger, "Unexpected error during handling message", t);
+				return null;
+			});
 		}
-		logger.info("Done updating Route53");
-		return Response.ok();
+		try {
+			res.get();
+			logger.info("Done updating Route53");
+			return Response.ok();
+		} catch (InterruptedException | ExecutionException e) {
+			logger.severe("Unexpected exception in SNS request handler: " + e);
+			return Response.error(e.getMessage());
+		}
 	}
 	
-	/* ==- Helper Utilities -== */
-
 }
