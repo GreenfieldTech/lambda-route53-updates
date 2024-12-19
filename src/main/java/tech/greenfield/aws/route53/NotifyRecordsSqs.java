@@ -25,7 +25,7 @@ public class NotifyRecordsSqs extends BaseNotifyRecords implements RequestHandle
 	
 	@Override
 	public Route53UpdateResponse handleRequest(SNSEvent input, Context context) {
-		log.info("Handling sqs request for " + input);
+		log.info("Handling sqs request for {}", input);
 		try {
 			return findMessages(10, 300)
 			.thenCompose(messages -> {
