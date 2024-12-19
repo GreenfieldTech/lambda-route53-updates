@@ -78,7 +78,6 @@
 			<plugin>
 				<artifactId>maven-antrun-plugin</artifactId>
 				<executions>
-<!--
 					<execution>
 						<phase>generate-resources</phase>
 						<configuration>
@@ -91,7 +90,6 @@
 							<goal>run</goal>
 						</goals>
 					</execution>
--->
 				</executions>
 			</plugin>
 			<plugin>
@@ -112,13 +110,6 @@
 				<configuration>
 					<source>${java.version}</source>
 					<target>${java.version}</target>
-				</configuration>
-			</plugin>
-			<plugin>
-				<groupId>org.apache.maven.plugins</groupId>
-				<artifactId>maven-surefire-plugin</artifactId>
-				<configuration>
-					<useSystemClassLoader>false</useSystemClassLoader>
 				</configuration>
 			</plugin>
 			<plugin>
