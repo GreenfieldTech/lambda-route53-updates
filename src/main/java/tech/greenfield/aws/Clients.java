@@ -1,15 +1,18 @@
 package tech.greenfield.aws;
 
 import static tech.greenfield.aws.Tools.getCreds;
+import static software.amazon.awssdk.regions.Region.AWS_GLOBAL;
 
 import java.util.Objects;
-import java.util.logging.Logger;
 
-import software.amazon.awssdk.regions.Region;
+import org.slf4j.LoggerFactory;
+import org.slf4j.Logger;
+
 import software.amazon.awssdk.services.autoscaling.AutoScalingAsyncClient;
 import software.amazon.awssdk.services.ec2.Ec2AsyncClient;
 import software.amazon.awssdk.services.route53.Route53AsyncClient;
 import software.amazon.awssdk.services.sqs.SqsAsyncClient;
+
 
 /**
  * AWS SDK clients helper
@@ -41,13 +44,13 @@ public class Clients {
 	private static AutoScalingAsyncClient autoscaling;
 	private static SqsAsyncClient sqs;
 	
-	private static Logger log = Logger.getLogger(Clients.class.getName());
+	private static Logger log = LoggerFactory.getLogger(Clients.class.getName());
 	
 	synchronized public static Route53AsyncClient route53() {
 		if (Objects.isNull(r53)) {
 			log.info("Initializing Route53 client using " + Tools.getCredsProvider());
 			r53 = Route53AsyncClient.builder().credentialsProvider(Tools.getCredsProvider())
-					.region(Region.AWS_GLOBAL).build();
+					.region(AWS_GLOBAL).build();
 		}
 		return r53;
 	}

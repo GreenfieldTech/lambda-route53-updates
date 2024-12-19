@@ -32,17 +32,17 @@ public class LifeCycle extends EventHandler {
 		// after handling the event, we need to invoke the life cycle action handler
 		// to complete the life cycle
 		if (Objects.isNull(lifecycleActionToken)) {
-			logger.info("Skipping lifecycle completion because there's no token");
+			log.info("Skipping lifecycle completion because there's no token");
 			return CompletableFuture.completedFuture(null);
 		}
-		logger.info("Completing life-cycle action with token " + lifecycleActionToken);
+		log.info("Completing life-cycle action with token " + lifecycleActionToken);
 		return completeLifecycle(lifecycleActionToken, "CONTINUE")
 				.thenApply(v -> CompletableFuture.<Void>completedFuture(null))
 				.exceptionally(e -> {
-					logger.severe("Error in lifecycle event handling, abandoning lifecycle with token " + lifecycleActionToken + ": " + e);
+					log.error("Error in lifecycle event handling, abandoning lifecycle with token " + lifecycleActionToken + ": " + e);
 					if (Objects.nonNull(lifecycleActionToken))
 						return completeLifecycle(lifecycleActionToken, "ABANDON");
-					logger.warning("Skipping lifecycle completion because there's no token");
+					log.warn("Skipping lifecycle completion because there's no token");
 					return CompletableFuture.completedFuture(null);
 				})
 				.thenCompose(ft -> ft);
