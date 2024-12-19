@@ -4,15 +4,12 @@
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>net.gftc.aws</groupId>
 	<artifactId>lambda-route53-updates</artifactId>
-	<version>2.3.2</version>
+	<version>2.4.0</version>
 	<name>lambda-route53-updates</name>
 	<properties>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 		<java.version>11</java.version>
-		<!--Plugin versions -->
-		<maven.compiler.plugin.version>3.8.1</maven.compiler.plugin.version>
-		<maven.surefire.plugin.version>2.19.1</maven.surefire.plugin.version>
 		<aws.sdk.version>2.29.37</aws.sdk.version>
 		<aws.lambda.version>3.14.0</aws.lambda.version>
 	</properties>
@@ -97,7 +94,7 @@
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-surefire-plugin</artifactId>
-				<version>${maven.surefire.plugin.version}</version>
+				<version>3.2.5</version>
 				<configuration>
 					<environmentVariables>
 						<HOSTED_ZONE_ID>TEST123ABC</HOSTED_ZONE_ID>
@@ -108,7 +105,7 @@
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-compiler-plugin</artifactId>
-				<version>${maven.compiler.plugin.version}</version>
+				<version>3.13.0</version>
 				<configuration>
 					<source>${java.version}</source>
 					<target>${java.version}</target>
