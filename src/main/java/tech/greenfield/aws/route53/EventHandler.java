@@ -55,9 +55,11 @@ public class EventHandler {
 	
 	protected EventHandler(Context context, EventType eventType, String ec2InstanceId, String autoScalingGroupName, Route53Message message) {
 		this.eventType = Objects.requireNonNull(eventType, "Missing event type");
-		this.ec2instanceId = ec2InstanceId;
+		this.ec2instanceId = Objects.requireNonNullElse(ec2InstanceId, "");
 		this.autoScalingGroupName = autoScalingGroupName;
 		this.message = message;
+		if (ec2instanceId.isBlank())
+			throw new IllegalArgumentException("EC2 instance ID is missing but must be provided!");
 	}
 
 	/**
@@ -168,6 +170,7 @@ public class EventHandler {
 	 * @throws RuntimeException in case no instance with the specified ID was found
 	 */
 	private CompletableFuture<Instance> getInstance(String ec2InstanceId) {
+		log.debug("Checking for instanceId {}", ec2InstanceId);
 		return ec2().describeInstances(b -> b.instanceIds(ec2InstanceId))
 				.thenApply(res -> res.reservations().stream()
 						.flatMap(r -> r.instances().stream())
