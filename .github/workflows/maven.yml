@@ -27,4 +27,4 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
-            target/*-shaded.jar
+            ${{ github.workspace }}/target/*-shaded.jar
