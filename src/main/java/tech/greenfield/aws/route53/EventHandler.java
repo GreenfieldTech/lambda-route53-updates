@@ -168,6 +168,7 @@ public class EventHandler {
 	 * @throws RuntimeException in case no instance with the specified ID was found
 	 */
 	private CompletableFuture<Instance> getInstance(String ec2InstanceId) {
+		log.debug("Checking for instanceId {}", ec2InstanceId);
 		return ec2().describeInstances(b -> b.instanceIds(ec2InstanceId))
 				.thenApply(res -> res.reservations().stream()
 						.flatMap(r -> r.instances().stream())
