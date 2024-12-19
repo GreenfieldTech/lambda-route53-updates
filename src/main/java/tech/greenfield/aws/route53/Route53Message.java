@@ -3,14 +3,17 @@ package tech.greenfield.aws.route53;
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.events.SNSEvent.SNSRecord;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.*;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.MapperFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import software.amazon.awssdk.services.ec2.model.Instance;
 import software.amazon.awssdk.services.route53.model.*;
@@ -23,7 +26,7 @@ public class Route53Message {
 	private Map<String, Object> body;
 	private Metadata metadata;
 	static private ObjectMapper s_mapper = new ObjectMapper();
-	private final Logger logger = Logger.getLogger(getClass().getName());
+	private final Logger logger = LoggerFactory.getLogger(getClass().getName());
 	private static final long DEFAULT_TTL = 300;
 
 	static {
@@ -33,8 +36,8 @@ public class Route53Message {
 	
 	public Route53Message(Message sqs) throws ParsingException {
 		body = retreiveBody(sqs.body());
-		logger.fine("SQS message body: " + json(body));
-		logger.fine("Request: " + String.valueOf(body.get("Message")));
+		logger.debug("SQS message body: " + json(body));
+		logger.debug("Request: " + String.valueOf(body.get("Message")));
 		readMetadata();
 	}
 
@@ -52,13 +55,13 @@ public class Route53Message {
 	
 	public Route53Message(SNSRecord sns) throws ParsingException {
 		body = retreiveBody(sns.getSNS().getMessage());
-		logger.fine("SNS message body: " + body);
+		logger.debug("SNS message body: " + body);
 		readMetadata();
 	}
 	
 	@SuppressWarnings("serial")
 	private void dumpConfiguration() {
-		logger.fine(json(new HashMap<String,Object>() {{
+		logger.debug(json(new HashMap<String,Object>() {{
 			put("SRV_RECORD",  metadata.getSRVSpec());
 			put("SRV4_RECORD", metadata.getSRV4Spec());
 			put("SRV6_RECORD", metadata.getSRV6Spec());
@@ -358,7 +361,7 @@ public class Route53Message {
 	public static String json(Object data) {
 		try {
 			return s_mapper.writeValueAsString(data);
-		} catch (JsonProcessingException e) {
+		} catch (com.fasterxml.jackson.core.JsonProcessingException e) {
 			return "Error JSON mapping a value: " + e;
 		}
 	}

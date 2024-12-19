@@ -5,10 +5,10 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
-import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.events.SNSEvent;
 import com.amazonaws.services.lambda.runtime.events.SNSEvent.SNSRecord;
+import com.amazonaws.services.lambda.runtime.Context;
 
 /**
  * Main entry point from the AWS Lambda engine, that takes an SNS event
@@ -36,14 +36,13 @@ public class NotifyRecordsSns extends BaseNotifyRecords implements RequestHandle
 	 * Main entry point
 	 */
 	public Route53UpdateResponse handleRequest(SNSEvent input, Context context) {
-		setupLogger(context);
 		if (Objects.isNull(input)) {
-			logger.warning("Invalid SNS input object");
+			log.warn("Invalid SNS input object");
 			return Response.error("no SNS event input");
 		}
 		List<SNSRecord> records = input.getRecords();
 		if (Objects.isNull(records)) {
-			logger.warning("No SNS events in input");
+			log.warn("No SNS events in input");
 			return Response.error("no SNS events");
 		}
 		CompletableFuture<Void> res = CompletableFuture.completedFuture(null);
@@ -52,23 +51,23 @@ public class NotifyRecordsSns extends BaseNotifyRecords implements RequestHandle
 				try {
 					return new Route53Message(r).createEventHandler(context).handle();
 				} catch (ParsingException e) {
-					Tools.logException(logger, "Error parsing incoming message", e);
-					logger.severe("Original message: " + r.getSNS().getMessage());
+					Tools.logException(log, "Error parsing incoming message", e);
+					log.error("Original message: " + r.getSNS().getMessage());
 					return CompletableFuture.completedFuture(null);
 				}
 			})
 			.exceptionally(t -> {
 				if (Objects.nonNull(t))
-					Tools.logException(logger, "Unexpected error during handling message", t);
+					Tools.logException(log, "Unexpected error during handling message", t);
 				return null;
 			});
 		}
 		try {
 			res.get();
-			logger.info("Done updating Route53");
+			log.info("Done updating Route53");
 			return Response.ok();
 		} catch (InterruptedException | ExecutionException e) {
-			logger.severe("Unexpected exception in SNS request handler: " + e);
+			log.error("Unexpected exception in SNS request handler: " + e);
 			return Response.error(e.getMessage());
 		}
 	}

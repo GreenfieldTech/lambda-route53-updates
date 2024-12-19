@@ -19,33 +19,31 @@ import com.amazonaws.services.lambda.runtime.events.SNSEvent;
 import software.amazon.awssdk.services.ec2.model.Filter;
 import software.amazon.awssdk.services.sqs.model.Message;
 
-
 public class NotifyRecordsSqs extends BaseNotifyRecords implements RequestHandler<SNSEvent, Route53UpdateResponse>{
 
 	private static String queueUrl = null;
 	
 	@Override
 	public Route53UpdateResponse handleRequest(SNSEvent input, Context context) {
-		setupLogger(context);
-		logger.info("Handling sqs request for " + input);
+		log.info("Handling sqs request for " + input);
 		try {
 			return findMessages(10, 300)
 			.thenCompose(messages -> {
-				logger.fine("Handling " + messages.size() + " messages from queue.");
+				log.debug("Handling " + messages.size() + " messages from queue.");
 				CompletableFuture<Route53UpdateResponse> res = CompletableFuture.completedFuture(null);
 				for (Message message : messages) {
 					res = res.thenCompose(v -> {
 						try {
 							return handleMessage(new Route53Message(message), context);
 						} catch (ParsingException e) {
-							Tools.logException(logger, "Failed to parse notification",e);
-							logger.severe("Original message: " + message.body());
+							Tools.logException(log, "Failed to parse notification",e);
+							log.error("Original message: " + message.body());
 							return CompletableFuture.completedFuture(null);
 						}
 					})
 					.exceptionally(t -> {
 						if (Objects.nonNull(t))
-							Tools.logException(logger, "Unexpected error during handling message", t);
+							Tools.logException(log, "Unexpected error during handling message", t);
 						return null;
 					});
 					// assuming we don't want to retry, and completion will take a while
@@ -57,11 +55,11 @@ public class NotifyRecordsSqs extends BaseNotifyRecords implements RequestHandle
 			})
 			.thenApply(v -> Response.ok())
 			.exceptionally(e -> {
-				Tools.logException(logger, "Couldn't get/handle sqs messages", e);
+				Tools.logException(log, "Couldn't get/handle sqs messages", e);
 				return Response.error(e.getMessage());
 			}).get();
 		} catch (InterruptedException | ExecutionException e) {
-			logger.severe("Unexpected exception in SQS request handler: " + e);
+			log.error("Unexpected exception in SQS request handler: " + e);
 			return Response.error(e.getMessage());
 		}
 	}
@@ -85,7 +83,7 @@ public class NotifyRecordsSqs extends BaseNotifyRecords implements RequestHandle
 					return Response.ok();
 				})
 				.exceptionally(t -> {
-					Tools.logException(logger, "Unexpected error while updating Route53", t);
+					Tools.logException(log, "Unexpected error while updating Route53", t);
 					return Response.error(t.toString()); 
 				});
 	}
@@ -106,16 +104,16 @@ public class NotifyRecordsSqs extends BaseNotifyRecords implements RequestHandle
 		.thenCompose(queue -> sqs().deleteMessage(b -> b.queueUrl(queue).receiptHandle(message.receiptHandle())))
 		.whenComplete((d, t) -> {
 			if (Objects.nonNull(t) || !d.sdkHttpResponse().isSuccessful())
-				logger.severe("Failed to delete message: " + t);
+				log.error("Failed to delete message: " + t);
 			else
-				logger.fine("Deleted message " + message.messageId());
+				log.debug("Deleted message " + message.messageId());
 		});
 	}
 
 	private CompletableFuture<String> getQueueUrl() {
 		if(Objects.nonNull(queueUrl))
 			return CompletableFuture.completedFuture(queueUrl);
-		logger.entering(this.getClass().getName(), "getQueueUrl");
+		log.trace(this.getClass().getName(), "getQueueUrl");
 		if(Objects.nonNull(System.getenv("QUEUE_URL")))
 			return CompletableFuture.completedFuture(queueUrl = System.getenv("QUEUE_URL"));
 		try {
@@ -135,18 +133,18 @@ public class NotifyRecordsSqs extends BaseNotifyRecords implements RequestHandle
 
 	private String getInstanceId() throws IOException {
 		try {
-			logger.entering(this.getClass().getName(), "getInstanceId");
+			log.trace(this.getClass().getName(), "getInstanceId");
 			while(true) {
 				try {
 					return getResult(new URL("http://169.254.169.254/latest/meta-data/instance-id").getContent());
 				} catch (MalformedURLException e) {
 					throw new IOException(e);
 				} catch (ConnectException e) {
-					logger.warning("Retrying getInstanceId because of: " + e.getMessage());
+					log.warn("Retrying getInstanceId because of: " + e.getMessage());
 				}
 			}
 		} finally {
-			logger.exiting(this.getClass().getName(), "getInstanceId");
+			log.trace(this.getClass().getName(), "getInstanceId");
 		}
 	}
 	
@@ -155,9 +153,9 @@ public class NotifyRecordsSqs extends BaseNotifyRecords implements RequestHandle
 			try(BufferedReader br = new BufferedReader(new InputStreamReader((InputStream) obj, "UTF-8"))) {
 				return br.lines().collect(Collectors.joining());
 			} catch (UnsupportedEncodingException e) {
-				Tools.logException(logger, "Unexpected encoding error", e);
+				Tools.logException(log, "Unexpected encoding error", e);
 			} catch (IOException e1) {
-				Tools.logException(logger, "Unexpected IO error reading response", e1);
+				Tools.logException(log, "Unexpected IO error reading response", e1);
 			}
 		}
 		return obj.toString();

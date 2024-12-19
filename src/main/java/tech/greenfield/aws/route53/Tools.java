@@ -8,7 +8,9 @@ import java.io.*;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
-import java.util.logging.Logger;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import software.amazon.awssdk.services.ec2.model.Instance;
 import software.amazon.awssdk.services.route53.model.*;
@@ -36,7 +38,7 @@ import software.amazon.awssdk.services.route53.model.*;
 public class Tools {
 	private static final long WAIT_PULSE = 1500;
 	
-	private static Logger log = Logger.getLogger(Tools.class.getName());
+	private static Logger log = LoggerFactory.getLogger(Tools.class.getName());
 
 	/**
 	 * Wait until the specified change request has been applied on Route53 servers
@@ -45,7 +47,7 @@ public class Tools {
 	public static CompletableFuture<Void> waitFor(ChangeInfo ci) {
 		if (ci.status() != ChangeStatus.PENDING)
 			return CompletableFuture.completedFuture(null);
-		log.fine("Still waiting for " + ci.id());
+		log.debug("Still waiting for " + ci.id());
 		return CompletableFuture.runAsync(() -> {
 			synchronized (ci) {
 				try {
@@ -75,9 +77,9 @@ public class Tools {
 				.maxItems("1"))
 				.whenComplete((res,t) -> {
 					if (Objects.nonNull(t))
-						log.severe("Error getting record set for " + type + " " + domainname + ": " + t);
+						log.error("Error getting record set for " + type + " " + domainname + ": " + t);
 					else
-						log.fine("Got recordset for " + domainname + ":" + type +" - " + res);
+						log.debug("Got recordset for " + domainname + ":" + type +" - " + res);
 				})
 				.thenApply(res -> res.resourceRecordSets().stream()
 				.filter(rr -> rr.name().equals(domainname))
@@ -120,14 +122,14 @@ public class Tools {
 	public static void logException(Logger logger, String message, Throwable t) {
 		StringWriter sw = new StringWriter();
 		t.printStackTrace(new PrintWriter(sw));
-		logger.severe(message + ": " + t.toString() + "\n" + sw.toString());
+		logger.error(message + ": " + t.toString() + "\n" + sw.toString());
 	}
 	
 	public static String getVersion() {
 		try (BufferedReader version = new BufferedReader(new InputStreamReader(Tools.class.getClassLoader().getResourceAsStream("version.txt")))) {
 			return version.readLine().trim();
 		} catch (IOException e) {
-			Logger.getAnonymousLogger().severe("Version file was not found");
+			LoggerFactory.getLogger("").error("Version file was not found");
 		}
 		return "unknown";
 	}
